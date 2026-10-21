@@ -1,0 +1,8 @@
+roots:
+  projects:
+    default: /mnt/projects
+    platforms:
+      windows: "P:/projects"
+      darwin: /Volumes/projects
+    hosts:
+      "render-*": /fast/projects

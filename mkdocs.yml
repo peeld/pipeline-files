@@ -54,6 +54,7 @@ nav:
       - 10-worked-examples.md
       - 11-risks-and-implementation-considerations.md
       - 12-build-order-and-verification.md
+      - 13-implementation-plan.md
   - Decision records:
       - decisions/README.md
       - decisions/0001-one-authority-per-entity-type.md
@@ -61,3 +62,7 @@ nav:
       - decisions/0003-clash-resolution-outcomes.md
       - decisions/0004-operations-optional-and-fail-if-missing.md
       - decisions/0005-attributes-typed-not-validated.md
+      - decisions/0006-python-reference-implementation.md
+      - decisions/0007-yaml-config-with-json-schema.md
+      - decisions/0008-template-syntax-and-strict-parsing.md
+      - decisions/0009-location-uris.md

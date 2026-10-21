@@ -1,6 +1,6 @@
 # Entity Layout & Storage Abstraction: Design Plan
 
-**Status:** Draft. **Last updated:** 2026-10-21.
+**Status:** Draft. Phase 1 is implemented. **Last updated:** 2026-10-21.
 
 This plan defines a small, storage-neutral layer that lets tools ask for things by name and fields instead of by path, and keeps those things consistent across a filesystem, a database and cloud storage.
 
@@ -18,6 +18,7 @@ This plan defines a small, storage-neutral layer that lets tools ask for things 
 10. [Worked examples](10-worked-examples.md)
 11. [Risks and implementation considerations](11-risks-and-implementation-considerations.md)
 12. [Build order and verification](12-build-order-and-verification.md)
+13. [Implementation plan](13-implementation-plan.md)
 
 ## Decision records
 
@@ -28,12 +29,17 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - [0003: Clashes resolve by version up, suffix or fail](decisions/0003-clash-resolution-outcomes.md)
 - [0004: Operations are optional and fail when not implemented](decisions/0004-operations-optional-and-fail-if-missing.md)
 - [0005: Attributes are typed and not validated on use](decisions/0005-attributes-typed-not-validated.md)
+- [0006: Python reference implementation, language-neutral configuration](decisions/0006-python-reference-implementation.md)
+- [0007: YAML configuration in named sections, checked by a JSON Schema](decisions/0007-yaml-config-with-json-schema.md)
+- [0008: Template syntax, and parsing that refuses ambiguity](decisions/0008-template-syntax-and-strict-parsing.md)
+- [0009: Locations are URIs of backend, logical root and relative path](decisions/0009-location-uris.md)
 
 ## Notes for implementers and agents
 
 - The design is deliberately generic. The five worked examples in [Worked examples](10-worked-examples.md) are illustrations from different fields, not requirements.
 - Items listed under "Left to the implementation" in [Risks and implementation considerations](11-risks-and-implementation-considerations.md) are intentionally undecided. Decide them when the relevant phase in [Build order and verification](12-build-order-and-verification.md) is built.
 - Diagrams are Mermaid blocks, so their source is plain text and renders on GitHub and GitLab.
+- The code lives in `src/entitylayout/`, and the worked examples are test fixtures in `tests/fixtures/`. The [implementation plan](13-implementation-plan.md) maps phases to code and tracks what is done.
 
 ## Giving feedback
 

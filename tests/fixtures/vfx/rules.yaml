@@ -1,0 +1,20 @@
+rules:
+  shot:
+    root: projects
+    keys: [project, sequence, shot]
+    templates:
+      fs: "{project}/shots/{sequence}/{sequence}_{shot}"
+  media:
+    parent: shot
+    keys: [version, camera, variant]
+    templates:
+      fs: "media/{version}/{camera}[_{variant}]"
+    attributes:
+      status: string
+      artist: string
+      task: string
+  frame:
+    parent: media
+    keys: [frame, ext]
+    templates:
+      fs: "{sequence}_{shot}_{version}.{frame}.{ext}"

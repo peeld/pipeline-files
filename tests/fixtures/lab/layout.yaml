@@ -1,0 +1,47 @@
+# Scientific data: instrument acquisitions, with the acquisition date as a
+# key so runs from different days never collide.
+version: 1
+
+keys:
+  study:
+    type: string
+    pattern: "[A-Z]{3}[0-9]{2}"
+  sample:
+    type: string
+    pattern: "S[0-9]{3}"
+  session:
+    type: int
+    format: "session{value}"
+    pattern: "[0-9]+"
+  instrument:
+    type: string
+    choices: [A, B, C]
+  date:
+    type: date
+    date_format: "%Y%m%d"
+  run:
+    type: int
+    pad: 3
+    pattern: "[0-9]+"
+
+roots:
+  raw:
+    default: /lab/raw
+    hosts:
+      "field-*": /home/field/raw
+
+rules:
+  session:
+    root: raw
+    keys: [study, sample, session]
+    templates:
+      fs: "{study}/{sample}/{session}"
+  acquisition:
+    parent: session
+    keys: [instrument, date, run]
+    templates:
+      fs: "instrument_{instrument}/{date}_{run}"
+    attributes:
+      parameters: map
+      operator: string
+      quality_flag: string

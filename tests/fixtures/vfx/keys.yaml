@@ -1,0 +1,28 @@
+keys:
+  project:
+    type: string
+    pattern: "[a-z][a-z0-9]*"
+  sequence:
+    type: string
+    pattern: "[A-Z]{2,4}"
+  shot:
+    type: int
+    pad: 3
+  version:
+    type: int
+    format: "v{value}"
+    pad: 3
+  camera:
+    type: string
+    choices: [main, witness, aux]
+  variant:
+    type: string
+    pattern: "[a-z]+"
+    required: false
+  frame:
+    type: int
+    pad: 4
+    pattern: "[0-9]+"
+  ext:
+    type: string
+    choices: [exr, jpg, mov]

@@ -1,0 +1,47 @@
+# Industrial design: part revisions. The part number contains the same '-'
+# that separates it from the revision in file names; its fixed-length pattern
+# keeps every name readable one way only.
+version: 3
+
+keys:
+  product:
+    type: string
+    pattern: "[A-Z][A-Z0-9]*"
+  assembly:
+    type: string
+    pattern: "A[0-9]{2}"
+  part_number:
+    type: string
+    pattern: "[0-9]{3}-[0-9]{4}"
+  revision:
+    type: string
+    pattern: "[A-Z]{1,2}"
+  doctype:
+    type: string
+    choices: [model, drawing]
+  ext:
+    type: string
+    choices: [step, sldprt, pdf, dwg]
+
+roots:
+  engineering:
+    platforms:
+      windows: "//eng-share/engineering"
+      linux: /mnt/engineering
+      darwin: /Volumes/engineering
+
+rules:
+  part:
+    root: engineering
+    keys: [product, assembly, part_number]
+    templates:
+      fs: "{product}/{assembly}/{part_number}"
+  document:
+    parent: part
+    keys: [revision, doctype, ext]
+    templates:
+      fs: "rev{revision}/{part_number}-{revision}_{doctype}.{ext}"
+    attributes:
+      material: string
+      approval: string
+      owner: string

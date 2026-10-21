@@ -19,7 +19,7 @@ flowchart TB
     p1 --> g1 --> p2 --> g2 --> p3 --> g3 --> p4 --> g4 --> p5 --> g5 --> p6 --> g6
 ```
 
-A first usable version is phases 1 to 3: a layout described once, queried by fields, on two backends. Authority, links and offline work follow, each only after the gate before it passes.
+A first usable version is phases 1 to 3: a layout described once, queried by fields, on two backends. Authority, links and offline work follow, each only after the gate before it passes. Concrete steps and current status are in the [implementation plan](13-implementation-plan.md).
 
 **Testing approach**
 
@@ -31,4 +31,4 @@ A first usable version is phases 1 to 3: a layout described once, queried by fie
 
 ---
 
-Previous: [Risks and implementation considerations](11-risks-and-implementation-considerations.md) | [Index](README.md)
+Previous: [Risks and implementation considerations](11-risks-and-implementation-considerations.md) | Next: [Implementation plan](13-implementation-plan.md) | [Index](README.md)

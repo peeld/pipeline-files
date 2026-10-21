@@ -1,0 +1,43 @@
+# Data science: experiment outputs, one prefix per run.
+version: "2026.10"
+
+keys:
+  project:
+    type: string
+    pattern: "[a-z][a-z0-9-]*[a-z0-9]"
+  experiment:
+    type: int
+    format: "exp{value}"
+    pad: 3
+    pattern: "[0-9]+"
+  run:
+    type: int
+    format: "run{value}"
+    pad: 4
+    pattern: "[0-9]+"
+  artifact:
+    type: string
+    pattern: "[a-z][a-z0-9_]*"
+  ext:
+    type: string
+    choices: [parquet, json, pt, png]
+
+roots:
+  experiments: /data/experiments
+
+rules:
+  run:
+    root: experiments
+    keys: [project, experiment, run]
+    templates:
+      fs: "{project}/{experiment}/{run}"
+    attributes:
+      parameters: map
+      metrics: map
+      author: string
+      stage: string
+  output:
+    parent: run
+    keys: [artifact, ext]
+    templates:
+      fs: "outputs/{artifact}.{ext}"

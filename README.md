@@ -41,12 +41,29 @@ It is deliberately **not** a sync tool, a file merger, a permissions system or a
 
 ## Current state
 
-This is an **early-stage design plan, open for comment**. No code has been written yet.
+This is an **early-stage design, open for comment**, with the first phase of code in place.
 
-- The full design is written up across [twelve short documents](docs/README.md), with diagrams and worked examples from five different fields.
-- Five core decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
+- The full design is written up across [thirteen short documents](docs/README.md), with diagrams and worked examples from five different fields.
+- Nine decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
 - Everything else is a proposal, and some questions are [deliberately left open](docs/11-risks-and-implementation-considerations.md).
-- Implementation is planned in [six phases](docs/12-build-order-and-verification.md), each with a test gate. The first usable version is a layout described once, queried by fields, on two storage backends.
+- Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phase 1 is built:** a layout described once in configuration, resolved from fields to a location and back. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
+- The first usable version, after phase 3, will query by fields on two storage backends.
+
+## Try it
+
+Requires Python 3.10 or later.
+
+```sh
+python -m venv .venv
+.venv/bin/pip install -e ".[test]"
+.venv/bin/pytest
+
+# Fields to a location, and back
+.venv/bin/entitylayout tests/fixtures/vfx locate media project=alpha sequence=ABC shot=40 version=3 camera=main
+.venv/bin/entitylayout tests/fixtures/vfx parse fs://projects/alpha/shots/ABC/ABC_040/media/v003/main
+```
+
+The `tests/fixtures/` directory holds a configuration for each of the five worked examples.
 
 ## Get involved
 

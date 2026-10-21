@@ -1,0 +1,39 @@
+# General office: client deliverables on a shared drive. Client names are
+# free text with spaces and mixed case, so they use the default string
+# pattern; the document type's fixed choices keep file names unambiguous.
+version: 1
+
+keys:
+  client:
+    type: string
+  year:
+    type: int
+    pattern: "[0-9]{4}"
+  quarter:
+    type: int
+    format: "Q{value}"
+    choices: [1, 2, 3, 4]
+  doctype:
+    type: string
+    choices: [report, invoice, proposal]
+  ext:
+    type: string
+    choices: [docx, pdf, xlsx]
+
+roots:
+  clients:
+    platforms:
+      windows: "S:/Clients"
+      darwin: /Volumes/Shared/Clients
+    default: /srv/shared/clients
+
+rules:
+  deliverable:
+    root: clients
+    keys: [client, year, quarter, doctype, ext]
+    templates:
+      fs: "{client}/{year}/{quarter}/{client} {year} {quarter} {doctype}.{ext}"
+    attributes:
+      author: string
+      review_status: string
+      retention_class: string
