@@ -1,6 +1,6 @@
 # Implementation plan
 
-This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. Phases 1 and 2 are built and their gates pass. Each later phase starts only after the gate before it passes.
+This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. Phases 1 and 2 are built and their gates pass. Phase 3 is next. Each later phase starts only after the gate before it passes.
 
 ## Choices made before code
 
@@ -58,12 +58,35 @@ Later phases add more backends, and `engine/` and `holding/` beside these.
 - [x] `exists` for a full set of fields, and a `query` command on the command line.
 - [x] **Gate:** for every rule in all five fixtures, a property test creates a random set of entities on disk, runs a random partial-field query, and checks the results are exactly the entities that match. Other tests check that known keys prune the walk, that junk names are skipped, and that ambiguous names fail.
 
-## Phase 3: Second backend and metadata
+## Phase 3: Second backend and metadata (next)
 
-- [ ] An SQLite backend with key columns and typed attributes, which compiles queries to a WHERE clause.
-- [ ] Capability flags, such as ad-hoc attribute queries and atomic multi-record updates.
+- [ ] Decide the table layout and record it as decision 0011. See the design notes below.
+- [ ] An SQLite backend in `src/entitylayout/backends/sqlite.py` with key columns and typed attributes, which compiles queries to a WHERE clause with bound parameters.
+- [ ] A `create` operation on the SQLite backend, so tests and import tools can load entities. The filesystem backend leaves it unimplemented until the write flow in phase 4.
+- [ ] Attribute filters on queries: equality to start with, on backends that declare they support them.
+- [ ] Capability flags, such as ad-hoc attribute queries and atomic multi-record updates, published beside the supported operations.
 - [ ] A place for the optional attribute validation layer ([decision 0005](decisions/0005-attributes-typed-not-validated.md)).
 - [ ] **Gate:** one query suite runs on both backends, loaded from the same fixtures, with identical results.
+
+**Design notes for phase 3**
+
+- **Table layout.** Keys are defined once and reused across rules, so the recommended layout is one `entities` table with a `rule` column, one typed column per key (null where a rule does not use it), an `attributes` JSON column, and the formatted location path. Make `(rule, location)` unique rather than the key columns, because SQLite treats nulls as distinct in unique indexes and optional keys can be null. The round-trip gate already guarantees one location per set of fields. The alternative, one table per rule, gives tighter typing but needs a schema change for every new rule.
+- **Column types.** `int` keys become INTEGER, `string` keys TEXT, and `date` keys ISO-8601 TEXT, so they still sort and compare correctly.
+- **Ready for phase 4.** Reserve columns for the internal ID (a uuid) and the config version now, even if phase 3 only fills them on create.
+- **Gate shape.** Reuse the strategies in `tests/strategies.py` and the tree builder in `tests/test_query_gate.py`. Generate entities once, write them to a directory tree and into SQLite, run the same random partial queries on both, and require identical fields and locations, in the same order.
+- **Location for database rows.** A row's location is the rule's template for that backend, formatted from its fields. So a rule needs a template for the database backend's name, or the backend reuses the `fs` template. Decide which, and record it with the table layout.
+
+## Known gaps and follow-ups
+
+These came up while building phases 1 and 2. None blocks phase 3.
+
+- **Windows and macOS are untested.** The test workflow covers them, but it has not run yet, because nothing has been pushed. The likely trouble spots are case-insensitive names and path length.
+- **A query cannot ask for an optional key to be absent.** Leaving a key out, or passing None, means "anything". If people need "no variant", it needs its own marker.
+- **`newest` groups by every other key by default.** On a rule with a frame key, `newest("version")` keeps the newest version of each frame, not the newest version as a whole. Use `within=` to choose the grouping. The `--newest` option on the command line has no way to set it yet.
+- **Finding keys that could contain `/` is a heuristic.** The filesystem backend tests a few sample values and looks for `/` in the pattern. A pattern that allows `/` only in unusual positions could slip through.
+- **A permission error during a walk is not handled.** It currently propagates and stops the query. Decide whether to skip and report it instead.
+- **Templates cannot contain literal `{`, `}`, `[` or `]`.** Add an escape syntax if a real layout needs one.
+- **The property tests take about 45 seconds.** Nearly all of that is Hypothesis generating values from the wide default string pattern, not the library.
 
 ## Phase 4: Authority, active links, rollback
 

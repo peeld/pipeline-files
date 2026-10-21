@@ -40,7 +40,7 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - The design is deliberately generic. The five worked examples in [Worked examples](10-worked-examples.md) are illustrations from different fields, not requirements.
 - Items listed under "Left to the implementation" in [Risks and implementation considerations](11-risks-and-implementation-considerations.md) are intentionally undecided. Decide them when the relevant phase in [Build order and verification](12-build-order-and-verification.md) is built.
 - Diagrams are Mermaid blocks, so their source is plain text and renders on GitHub and GitLab.
-- The code lives in `src/entitylayout/`, and the worked examples are test fixtures in `tests/fixtures/`. The [implementation plan](13-implementation-plan.md) maps phases to code and tracks what is done.
+- The code lives in `src/entitylayout/`, and the worked examples are test fixtures in `tests/fixtures/`. The [implementation plan](13-implementation-plan.md) maps phases to code and tracks what is done. The next tasks are listed in `TODO.md` at the repository root.
 
 ## Giving feedback
 
