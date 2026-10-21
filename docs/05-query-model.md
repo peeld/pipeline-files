@@ -21,6 +21,29 @@ So "give me the media for day14" is the media rule with one key supplied. The ca
 - A key whose values could contain `/` cannot be used in a filesystem template, because the filesystem would read it as a directory.
 - Names read from disk are compared in Unicode normal form C, so names stored decomposed, as older macOS volumes do, still match.
 
+**The database answer in practice** ([decision 0011](decisions/0011-sqlite-table-layout.md))
+
+- The SQLite backend keeps every entity in one `entities` table, with a column per key, a `rule` column and an `attributes` JSON column.
+- A query compiles to a WHERE clause with bound parameters: one equality per supplied key, and one per attribute filter.
+- A row's location is its rule's template, `fs` by default, formatted from its fields. So the database and the filesystem give the same entity the same `fs://` location.
+- Every row read back is checked against its rule, and a row that no longer fits raises an error that names it.
+- A database row exists only if it was created. On the filesystem, creating a child also creates its parent's directory, so the parent exists too.
+- `int` keys must fit in 64 bits. A larger value raises an error, even where the key's pattern allows it on the filesystem.
+
+```python
+from entitylayout import SQLiteBackend, load_config
+
+layout = load_config("layout/")
+with SQLiteBackend(layout, "entities.db") as db:
+    fields = {"project": "alpha", "sequence": "ABC", "shot": 40, "version": 3, "camera": "main"}
+    db.create("media", fields, {"status": "wip"})
+    approved = db.query("media", {"shot": 40}, attributes={"status": "approved"})
+```
+
+From the command line, `--db` queries a database instead of the filesystem, and `--attr` filters by attribute: `entitylayout layout/ query media shot=40 --db entities.db --attr status=approved`.
+
+**Attribute filters.** A query can name attributes as well as keys. Each filter keeps entities whose attribute equals a string, number, boolean or date. Lists, maps and None are refused, so use a `where` filter for those. An attribute filter works on any attribute, declared or not, but only on backends with the `attribute_queries` capability. Dates in declared `date` and `datetime` attributes read back as dates. Dates in undeclared attributes are stored and read back as ISO text.
+
 **Key order is a performance decision.** Filesystems and object stores are prefix-oriented, so a query is cheap when the keys it supplies come first in the rule. Asking for one day is fast if day is an early key, and asking for one camera across every day becomes a scan. A database does not care. Rule authors should order keys by how people actually ask.
 
 **Extension points**
@@ -49,7 +72,14 @@ for entity in media.run(FilesystemBackend(layout)):
 
 The same query is available from the command line, for example `entitylayout layout/ query media project=alpha shot=40 --newest version`.
 
-**Operations are published per backend.** A backend implements only the operations it can, lists them, and fails on any other ([decision 0004](decisions/0004-operations-optional-and-fail-if-missing.md)). The filesystem backend implements `query` and `exists`. It does not store attributes, so a query that filters by attribute fails there.
+**Operations and capabilities are published per backend.** A backend implements only the operations it can, lists them, and fails on any other ([decision 0004](decisions/0004-operations-optional-and-fail-if-missing.md)). Capabilities say how far an operation goes, and a backend declares them.
+
+| Backend | Operations | Capabilities |
+| --- | --- | --- |
+| Filesystem | `query`, `exists` | None. It does not store attributes yet, so a query that filters by attribute fails there |
+| SQLite | `query`, `exists`, `create` | `attribute_queries`, `atomic_updates` (writes inside `transaction()` all happen or none do) |
+
+**Attribute validation is optional.** The core never checks attributes ([decision 0005](decisions/0005-attributes-typed-not-validated.md)). A deployment that wants them checked passes a validator to the backend, which calls it before every write. `TypedAttributes` checks the types a rule declares, and refuses undeclared attributes unless told to allow them.
 
 ---
 

@@ -7,9 +7,10 @@ import datetime as dt
 import json
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
-from .backends import FilesystemBackend
+from .backends import Backend, FilesystemBackend, SQLiteBackend
 from .check import check_roots
 from .errors import LayoutError
 from .layout import Layout, load_config
@@ -41,6 +42,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     query.add_argument("--newest", metavar="KEY", help="keep only the highest KEY in each group, such as version")
     query.add_argument("--collapse", metavar="KEY", help="collapse a numbered KEY, such as frame, into ranges")
     query.add_argument("--path", action="store_true", help="print real paths instead of JSON")
+    query.add_argument("--db", metavar="PATH", help="query an SQLite database instead of the filesystem")
+    query.add_argument("--template", default="fs", help="template the backend addresses entities by (default fs)")
+    query.add_argument(
+        "--attr",
+        action="append",
+        default=[],
+        metavar="NAME=VALUE",
+        help="keep entities whose attribute equals VALUE, read as the attribute's declared type (needs --db)",
+    )
 
     args = parser.parse_args(argv)
     try:
@@ -86,24 +96,69 @@ def _locate(layout: Layout, args: argparse.Namespace) -> int:
 
 
 def _query(layout: Layout, args: argparse.Namespace) -> int:
-    query = Query(args.rule, _fields(layout, args.rule, args.fields))
+    attributes = _attributes(layout, args.rule, args.attr)
+    query = Query(args.rule, _fields(layout, args.rule, args.fields), attributes or None)
     if args.newest:
         query = query.then(newest(args.newest))
     if args.collapse:
         query = query.then(collapse_sequence(args.collapse))
-    for result in query.run(FilesystemBackend(layout)):
+    backend: Backend
+    if args.db:
+        # Connecting would create a missing file, and an empty database would quietly answer nothing.
+        if not Path(args.db).is_file():
+            raise LayoutError(f"no SQLite database at {args.db!r}")
+        backend = SQLiteBackend(layout, args.db, args.template)
+    else:
+        backend = FilesystemBackend(layout, args.template)
+    for result in query.run(backend):
         if isinstance(result, EntitySequence):
             location = result.entities[0].location
             record = {"rule": result.rule, "fields": result.fields, result.key: str(result)}
         else:
             location = result.location
             record = {"rule": result.rule, "fields": result.fields, "location": location.uri}
+            if result.attributes:
+                record["attributes"] = result.attributes
         if args.path:
             suffix = f"  [{result.key} {result}]" if isinstance(result, EntitySequence) else ""
             print(f"{layout.real_path(location)}{suffix}")
         else:
             print(json.dumps(record, default=_json_default, ensure_ascii=False))
     return 0
+
+
+def _attributes(layout: Layout, rule_name: str, items: Sequence[str]) -> dict[str, Any]:
+    """Attribute filters from NAME=VALUE text. Undeclared attributes are compared as text."""
+    rule = layout.rule(rule_name)
+    attributes: dict[str, Any] = {}
+    for item in items:
+        name, sep, raw = item.partition("=")
+        if not sep:
+            raise LayoutError(f"expected NAME=VALUE for --attr, got {item!r}")
+        kind = rule.attributes.get(name, "string")
+        try:
+            attributes[name] = _ATTRIBUTE_PARSERS[kind](raw)
+        except KeyError:
+            raise LayoutError(f"attribute {name!r} is a {kind}, which --attr cannot compare") from None
+        except ValueError:
+            raise LayoutError(f"attribute {name!r}: {raw!r} is not a {kind}") from None
+    return attributes
+
+
+def _bool(raw: str) -> bool:
+    if raw not in ("true", "false"):
+        raise ValueError(raw)
+    return raw == "true"
+
+
+_ATTRIBUTE_PARSERS = {
+    "string": str,
+    "int": int,
+    "float": float,
+    "bool": _bool,
+    "date": dt.date.fromisoformat,
+    "datetime": dt.datetime.fromisoformat,
+}
 
 
 def _parse(layout: Layout, args: argparse.Namespace) -> int:

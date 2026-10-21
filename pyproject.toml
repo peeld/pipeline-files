@@ -32,4 +32,4 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["entitylayout"]
-known-local-folder = ["conftest", "strategies"]
+known-local-folder = ["conftest", "strategies", "trees"]

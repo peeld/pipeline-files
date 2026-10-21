@@ -36,3 +36,7 @@ class RootNotMappedError(LayoutError):
 
 class OperationNotSupportedError(LayoutError, NotImplementedError):
     """The backend does not implement the operation that was attempted."""
+
+
+class EntityExistsError(LayoutError):
+    """An entity was created where one already exists."""

@@ -12,5 +12,6 @@ Settled decisions, one per file. Treat them as constraints when implementing.
 - [0008: Template syntax, and parsing that refuses ambiguity](0008-template-syntax-and-strict-parsing.md)
 - [0009: Locations are URIs of backend, logical root and relative path](0009-location-uris.md)
 - [0010: Filesystem queries are strict and fail loudly](0010-filesystem-queries-are-strict.md)
+- [0011: SQLite keeps one entities table, and rows borrow a template for their location](0011-sqlite-table-layout.md)
 
 [Index](../README.md)

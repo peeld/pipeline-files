@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from entitylayout import SQLiteBackend, load_config
 from entitylayout.cli import main
 
 from conftest import FIXTURES
@@ -84,3 +85,27 @@ def test_query(capsys, tmp_path):
 
     assert main([str(config), "query", "frame", "version=1", "--path"]) == 0
     assert capsys.readouterr().out.count("img.000") == 2
+
+
+def test_query_a_database(capsys, tmp_path):
+    path = tmp_path / "entities.db"
+    with SQLiteBackend(load_config(VFX), path) as db:
+        shot = {"project": "alpha", "sequence": "ABC", "shot": 40}
+        db.create("media", {**shot, "version": 1, "camera": "main"}, {"status": "approved"})
+        db.create("media", {**shot, "version": 2, "camera": "main"}, {"status": "wip"})
+
+    assert main([VFX, "query", "media", "shot=40", "--db", str(path)]) == 0
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [line["attributes"]["status"] for line in lines] == ["approved", "wip"]
+
+    assert main([VFX, "query", "media", "--db", str(path), "--attr", "status=wip", "--newest", "version"]) == 0
+    [line] = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert line["location"] == "fs://projects/alpha/shots/ABC/ABC_040/media/v002/main"
+
+    assert main([VFX, "query", "media", "--db", str(tmp_path / "missing.db")]) == 1
+    assert "no SQLite database" in capsys.readouterr().err
+    assert not (tmp_path / "missing.db").exists()
+    assert main([VFX, "query", "media", "--db", str(path), "--attr", "status"]) == 1
+    assert "NAME=VALUE" in capsys.readouterr().err
+    assert main([VFX, "query", "media", "--attr", "status=wip"]) == 1
+    assert "does not support 'query by attributes'" in capsys.readouterr().err

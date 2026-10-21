@@ -180,6 +180,7 @@ def test_missing_root(tmp_path):
 
 def test_operations_are_published():
     assert FilesystemBackend.supported_operations() == {"query", "exists"}
+    assert not FilesystemBackend.supports("create")
     assert FilesystemBackend.supports("query")
     assert Backend.supported_operations() == frozenset()
     with pytest.raises(OperationNotSupportedError):

@@ -15,10 +15,10 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from entitylayout import FilesystemBackend
-from entitylayout.keys import nfc
 
 from conftest import FIXTURE_NAMES, load_fixture
-from strategies import key_values, rule_fields
+from strategies import partial_fields, rule_fields
+from trees import make_tree
 
 RULES = [(name, rule) for name in FIXTURE_NAMES for rule in load_fixture(name).rules]
 
@@ -29,33 +29,11 @@ RULES = [(name, rule) for name in FIXTURE_NAMES for rule in load_fixture(name).r
 def test_partial_query_returns_matching_entities(fixture, rule, data):
     layout = load_fixture(fixture)
     entities = data.draw(st.lists(rule_fields(layout, rule), min_size=1, max_size=12))
-
-    # Pick query keys, taking values from a stored entity (so results are
-    # usually non-empty) or drawing fresh ones (so they are sometimes empty).
-    keys = data.draw(st.lists(st.sampled_from(layout.rule(rule).keys), unique=True))
-    source = data.draw(st.sampled_from(entities))
-    query = {}
-    for key in keys:
-        if key in source and data.draw(st.booleans()):
-            query[key] = source[key]
-        else:
-            query[key] = data.draw(key_values(layout.keys[key]))
+    query = data.draw(partial_fields(layout, rule, entities))
 
     with tempfile.TemporaryDirectory() as tmp:
         local = layout.with_roots({layout.rule(rule).root: tmp})
-        created = {}
-        spelled: dict[str, str] = {}
-        for fields in entities:
-            location = local.locate(rule, fields)
-            # Skip paths with any level that differs from an earlier one only by
-            # case, because the two would share a directory on Windows and macOS.
-            parts = location.path.split("/")
-            prefixes = ["/".join(parts[: i + 1]) for i in range(len(parts))]
-            if any(spelled.get(nfc(p).casefold(), p) != p for p in prefixes):
-                continue
-            spelled.update((nfc(p).casefold(), p) for p in prefixes)
-            local.real_path(location).mkdir(parents=True, exist_ok=True)
-            created[location.path] = fields
+        created = make_tree(local, rule, entities)
 
         expected = sorted(path for path, fields in created.items() if all(fields.get(k) == v for k, v in query.items()))
         results = FilesystemBackend(local).query(rule, query)

@@ -13,7 +13,7 @@ from ..keys import Key, nfc
 from ..layout import Layout, Rule
 from ..location import Location
 from ..template import KeyRef, Token, format_tokens, match_tokens
-from .base import Backend
+from .base import AttributeValidator, Backend
 
 # Values tried to see whether a string key could contain the path separator.
 _SEPARATOR_PROBES = ("/", "a/b", "A/B", "1/2", "a/b.c", "a-b/c_d")
@@ -36,8 +36,9 @@ class FilesystemBackend(Backend):
         *,
         platform: str | None = None,
         host: str | None = None,
+        validator: AttributeValidator | None = None,
     ) -> None:
-        super().__init__(layout, name)
+        super().__init__(layout, name, validator=validator)
         self.platform = platform
         self.host = host
         for rule in layout.rules.values():
@@ -57,8 +58,7 @@ class FilesystemBackend(Backend):
         *,
         attributes: Mapping[str, Any] | None = None,
     ) -> list[Entity]:
-        if attributes:
-            raise self._unsupported("query by attributes")
+        self._query_attributes(attributes)
         r = self._rule(rule)
         bound = self._query_fields(r, fields)
         base = self._root_path(r)
