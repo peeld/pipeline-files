@@ -1,0 +1,63 @@
+site_name: Entity Layout & Storage Abstraction
+site_description: Design plan for a storage-neutral entity layout layer.
+site_url: https://peeld.github.io/pipeline-files/
+repo_url: https://github.com/peeld/pipeline-files
+repo_name: peeld/pipeline-files
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+
+theme:
+  name: material
+  features:
+    - navigation.indexes
+    - navigation.footer
+    - search.highlight
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: README.md
+  - Design plan:
+      - 01-purpose-and-scope.md
+      - 02-core-concepts.md
+      - 03-layered-architecture.md
+      - 04-configuration-model.md
+      - 05-query-model.md
+      - 06-authority-and-links.md
+      - 07-write-lifecycle-and-failure-handling.md
+      - 08-offline-operation-and-holding-space.md
+      - 09-conflict-resolution.md
+      - 10-worked-examples.md
+      - 11-risks-and-implementation-considerations.md
+      - 12-build-order-and-verification.md
+  - Decision records:
+      - decisions/README.md
+      - decisions/0001-one-authority-per-entity-type.md
+      - decisions/0002-per-element-holding-space.md
+      - decisions/0003-clash-resolution-outcomes.md
+      - decisions/0004-operations-optional-and-fail-if-missing.md
+      - decisions/0005-attributes-typed-not-validated.md
