@@ -37,3 +37,9 @@ rules:
       author: string
       review_status: string
       retention_class: string
+
+links:
+  deliverable:
+    dms: {role: authority}
+    drive: {role: active}
+    records: {role: passive, triggers: [approved]}

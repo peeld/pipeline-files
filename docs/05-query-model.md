@@ -27,6 +27,7 @@ So "give me the media for day14" is the media rule with one key supplied. The ca
 - A query compiles to a WHERE clause with bound parameters: one equality per supplied key, and one per attribute filter.
 - A row's location is its rule's template, `fs` by default, formatted from its fields. So the database and the filesystem give the same entity the same `fs://` location.
 - Every row read back is checked against its rule, and a row that no longer fits raises an error that names it.
+- Queries and `exists` see committed and out of sync records only. Pending and failed records are hidden ([decision 0013](decisions/0013-records-operation-log-and-write-steps.md)). Entities read from the database carry their internal ID, and an out of sync entity lists its lagging links.
 - A database row exists only if it was created. On the filesystem, creating a child also creates its parent's directory, so the parent exists too.
 - `int` keys must fit in 64 bits. A larger value raises an error, even where the key's pattern allows it on the filesystem.
 
@@ -76,8 +77,8 @@ The same query is available from the command line, for example `entitylayout lay
 
 | Backend | Operations | Capabilities |
 | --- | --- | --- |
-| Filesystem | `query`, `exists` | None. It does not store attributes yet, so a query that filters by attribute fails there |
-| SQLite | `query`, `exists`, `create` | `attribute_queries`, `atomic_updates` (writes inside `transaction()` all happen or none do) |
+| Filesystem | `query`, `exists`, and the link operations `realize` and `undo` | None. Attributes live in sidecars, which queries do not read, so a query that filters by attribute fails there |
+| SQLite | `query`, `exists`, `create`, and the authority operations `reserve`, `log`, `settle`, `record`, `history` and `unsettled` | `attribute_queries`, `atomic_updates` (writes inside `transaction()` all happen or none do) |
 
 **Attribute validation is optional.** The core never checks attributes ([decision 0005](decisions/0005-attributes-typed-not-validated.md)). A deployment that wants them checked passes a validator to the backend, which calls it before every write. `TypedAttributes` checks the types a rule declares, and refuses undeclared attributes unless told to allow them.
 

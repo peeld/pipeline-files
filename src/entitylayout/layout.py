@@ -12,6 +12,7 @@ import yaml
 
 from .errors import AmbiguousParseError, ConfigError, LayoutError, NoMatchError
 from .keys import Key
+from .links import Links
 from .location import BACKEND_NAME, ROOT_NAME, Location
 from .roots import Root
 from .template import Template
@@ -35,6 +36,7 @@ class Rule:
 
     A rule with a parent inherits the parent's keys, root and attributes, and
     each of its templates continues the parent's template for that backend.
+    A rule without links of its own uses its parent's.
     """
 
     def __init__(
@@ -55,6 +57,8 @@ class Rule:
         self.attributes = dict(attributes)
         self.parent = parent
         self.description = description
+        # Set once the links section is read; None when no rule in the chain declares links.
+        self.links: Links | None = None
 
     def __repr__(self) -> str:
         return f"Rule({self.name!r})"
@@ -75,14 +79,11 @@ class Layout:
         keys: Mapping[str, Key],
         rules: Mapping[str, Rule],
         roots: Mapping[str, Root],
-        links: Mapping[str, Any] | None = None,
     ) -> None:
         self.version = version
         self.keys = dict(keys)
         self.rules = dict(rules)
         self.roots = dict(roots)
-        # Links are kept as written until the authority and link engine reads them.
-        self.links = dict(links or {})
 
     def with_roots(self, locations: Mapping[str, str | os.PathLike]) -> Layout:
         """A copy of this layout with some roots mapped to fixed locations, such as a sandbox."""
@@ -91,7 +92,7 @@ class Layout:
             if name not in roots:
                 raise LayoutError(f"no root named {name!r}")
             roots[name] = Root(name, default=str(location))
-        return Layout(self.version, self.keys, self.rules, roots, self.links)
+        return Layout(self.version, self.keys, self.rules, roots)
 
     def rule(self, name: str) -> Rule:
         try:
@@ -254,7 +255,22 @@ def load_config_data(data: Mapping[str, Any]) -> Layout:
     for name in rule_specs:
         _build_rule(name, rule_specs, keys, roots, rules, ())
 
-    return Layout(version, keys, rules, roots, _section(data, "links"))
+    _read_links(_section(data, "links"), rules)
+
+    return Layout(version, keys, rules, roots)
+
+
+def _read_links(section: Mapping[str, Any], rules: Mapping[str, Rule]) -> None:
+    declared = {}
+    for name, spec in section.items():
+        if name not in rules:
+            raise ConfigError(f"links are given for rule {name!r}, which is not defined")
+        declared[name] = Links.from_config(name, spec)
+    for rule in rules.values():
+        current: Rule | None = rule
+        while current is not None and current.name not in declared:
+            current = rules[current.parent] if current.parent else None
+        rule.links = declared[current.name] if current else None
 
 
 def _section(data: Mapping[str, Any], name: str) -> Mapping[str, Any]:

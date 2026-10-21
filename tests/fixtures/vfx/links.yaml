@@ -1,0 +1,8 @@
+# The production tracking database is the authority. The studio file server
+# follows on every write, and review copies are made when media is approved.
+# Media and frames inherit the shot's links.
+links:
+  shot:
+    tracking: {role: authority}
+    files: {role: active}
+    review: {role: passive, triggers: [approved]}

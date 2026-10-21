@@ -41,13 +41,14 @@ It is deliberately **not** a sync tool, a file merger, a permissions system or a
 
 ## Current state
 
-This is an **early-stage design, open for comment**, with the first three phases of code in place.
+This is an **early-stage design, open for comment**, with the first four phases of code in place.
 
 - The full design is written up across [thirteen short documents](docs/README.md), with diagrams and worked examples from five different fields.
-- Eleven decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
+- Fourteen decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
 - Everything else is a proposal, and some questions are [deliberately left open](docs/11-risks-and-implementation-considerations.md).
-- Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phases 1 to 3 are built:** a layout described once in configuration, resolved from fields to a location and back, and queried by partial fields on the filesystem or an SQLite database, with identical answers from both. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
-- This is the first usable version. Writes that keep several backends in step come in phase 4.
+- Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phases 1 to 3 are built:** a layout described once in configuration, resolved from fields to a location and back, and queried by partial fields on the filesystem or an SQLite database, with identical answers from both.
+- **Phase 4 is built:** writes go to an authority first and then to each active link in order. A failure at any step is undone or left visibly out of sync, and recovery finishes a crashed write from the operation log. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
+- Offline work and merging come in phase 5.
 
 ## Try it
 

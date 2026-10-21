@@ -37,6 +37,13 @@ def test_fixtures_match_schema(name):
         {"version": 1, "rules": {"a": {"templates": {"FS": "x"}}}},
         {"version": 1, "roots": {"r": {"platforms": {"beos": "/x"}}}},
         {"version": 1, "roots": {"r": {}}},
+        {"version": 1, "links": {"a": {}}},
+        {"version": 1, "links": {"a": {"db": {}}}},
+        {"version": 1, "links": {"a": {"db": {"role": "boss"}}}},
+        {"version": 1, "links": {"a": {"db": {"role": "authority", "order": 1}}}},
+        {"version": 1, "links": {"a": {"db": {"role": "active", "offline": "hold"}}}},
+        {"version": 1, "links": {"a": {"db": {"role": "passive", "triggers": ["a", "a"]}}}},
+        {"version": 1, "links": {"a": {"db": {"role": "authority", "clash": "overwrite"}}}},
     ],
 )
 def test_schema_rejects(data):

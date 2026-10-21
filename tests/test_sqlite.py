@@ -6,6 +6,7 @@ import sqlite3
 import pytest
 
 from entitylayout import (
+    AUTHORITY_OPERATIONS,
     Backend,
     ConfigError,
     EntityExistsError,
@@ -44,7 +45,7 @@ def paths(entities):
 
 
 def test_operations_and_capabilities_are_published():
-    assert SQLiteBackend.supported_operations() == {"query", "exists", "create"}
+    assert SQLiteBackend.supported_operations() == {"query", "exists", "create", *AUTHORITY_OPERATIONS}
     assert SQLiteBackend.has_capability("attribute_queries")
     assert SQLiteBackend.has_capability("atomic_updates")
     assert not FilesystemBackend.has_capability("attribute_queries")
@@ -272,3 +273,106 @@ def test_the_optional_validator_checks_declared_types():
     # Without a validator the core stores whatever it is given (decision 0005).
     with SQLiteBackend(layout, ":memory:") as db:
         assert db.create("media", fields, {"status": 3}).attributes == {"status": 3}
+
+
+# Schema version 2: records with states, and the operation log
+
+
+def _version_1_database(path):
+    """A database as phase 3 wrote it, with two committed rows."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('schema', '1'), ('template', 'fs');
+        CREATE TABLE entities (
+            id TEXT PRIMARY KEY, rule TEXT NOT NULL, location TEXT NOT NULL,
+            config_version TEXT NOT NULL, attributes TEXT NOT NULL DEFAULT '{}', UNIQUE (rule, location));
+        ALTER TABLE entities ADD COLUMN "key_project" TEXT;
+        ALTER TABLE entities ADD COLUMN "key_sequence" TEXT;
+        ALTER TABLE entities ADD COLUMN "key_shot" INTEGER;
+        ALTER TABLE entities ADD COLUMN "key_retired" TEXT;
+        INSERT INTO entities (id, rule, location, config_version, attributes, key_project, key_sequence, key_shot)
+            VALUES ('one', 'shot', 'alpha/shots/ABC/ABC_040', '1', '{"note": "kept"}', 'alpha', 'ABC', 40),
+                   ('two', 'shot', 'alpha/shots/ABC/ABC_050', '1', '{}', 'alpha', 'ABC', 50);
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_a_version_1_database_is_upgraded(tmp_path):
+    path = tmp_path / "v1.db"
+    _version_1_database(path)
+    with SQLiteBackend(load_fixture("vfx"), path) as db:
+        shots = db.query("shot")
+        assert [(e.id, e.fields["shot"], e.attributes) for e in shots] == [
+            ("one", 40, {"note": "kept"}),
+            ("two", 50, {}),
+        ]
+        record = db.record("one")
+        assert (record.state, record.revision, record.content_hash, record.lagging) == ("committed", 1, None, ())
+        db.create("media", {**SHOT, "version": 1, "camera": "main"})
+        with pytest.raises(EntityExistsError):
+            db.create("shot", SHOT)
+        columns = {row[1] for row in db._conn.execute("PRAGMA table_info(entities)")}
+        # Columns for keys the layout no longer uses are kept, never dropped.
+        assert {"key_retired", "state", "revision", "content_hash", "lagging", "key_version"} <= columns
+    with SQLiteBackend(load_fixture("vfx"), path) as db:
+        assert dict(db._conn.execute("SELECT name, value FROM meta"))["schema"] == "2"
+        assert len(db.query("shot")) == 2
+
+
+def test_pending_and_failed_records_are_hidden(db):
+    fields = {**SHOT, "version": 8, "camera": "main"}
+    record = db.reserve("media", fields, operation="op")
+    assert record.state == "pending"
+    assert not db.exists("media", fields)
+    assert fields not in [e.fields for e in db.query("media")]
+    # A pending record still holds its location.
+    with pytest.raises(EntityExistsError):
+        db.create("media", fields)
+    db.settle("op", record.id, "failed")
+    assert not db.exists("media", fields)
+    # A failed one does not, and stays in the log.
+    again = db.create("media", fields)
+    assert again.id != record.id and db.exists("media", fields)
+    assert [s.step for s in db.history(record.id)] == ["reserved", "failed"]
+    assert db.record(record.id).state == "failed"
+
+
+def test_out_of_sync_records_are_seen_with_their_lagging_links(db):
+    fields = {**SHOT, "version": 8, "camera": "main"}
+    record = db.reserve("media", fields, operation="op")
+    db.settle("op", record.id, "out_of_sync", lagging=["files"])
+    (found,) = db.query("media", {"version": 8})
+    assert found.lagging == ("files",)
+    assert [r.id for r in db.unsettled()] == [record.id]
+    db.settle("op", record.id, "committed")
+    assert db.unsettled() == []
+
+
+def test_settle_refuses_moves_the_lifecycle_does_not_declare(db):
+    record = db.reserve("media", {**SHOT, "version": 8, "camera": "main"}, operation="op")
+    with pytest.raises(LayoutError, match="lagging links are given exactly"):
+        db.settle("op", record.id, "out_of_sync")
+    with pytest.raises(LayoutError, match="lagging links are given exactly"):
+        db.settle("op", record.id, "committed", lagging=["files"])
+    with pytest.raises(LayoutError, match="cannot move from pending to pending"):
+        db.settle("op", record.id, "pending")
+    db.settle("op", record.id, "committed")
+    with pytest.raises(LayoutError, match="cannot move from committed to failed"):
+        db.settle("op", record.id, "failed")
+    with pytest.raises(LayoutError, match="no record nope"):
+        db.record("nope")
+
+
+def test_a_reservation_and_its_log_entry_commit_together(db):
+    fields = {**SHOT, "version": 8, "camera": "main"}
+    with pytest.raises(RuntimeError):
+        with db.transaction():
+            record = db.reserve("media", fields, operation="op")
+            raise RuntimeError("crash")
+    assert db.history(record.id) == []
+    with pytest.raises(LayoutError):
+        db.record(record.id)

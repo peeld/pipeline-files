@@ -26,8 +26,9 @@
       "additionalProperties": { "$ref": "#/$defs/root" }
     },
     "links": {
-      "description": "Authority and link policies per rule. Reserved: read by the link engine in a later phase.",
-      "type": "object"
+      "description": "Per rule: the authority, the active and passive links, and their policies. A rule without links uses its parent's.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/rule_links" }
     }
   },
   "$defs": {
@@ -83,6 +84,62 @@
           "additionalProperties": { "enum": ["string", "int", "float", "bool", "date", "datetime", "list", "map"] }
         }
       }
+    },
+    "rule_links": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Link name to settings. Exactly one link is the authority, which the loader checks.",
+      "propertyNames": { "pattern": "^[A-Za-z0-9_.-]+$" },
+      "additionalProperties": { "$ref": "#/$defs/link" }
+    },
+    "clash": {
+      "enum": ["fail", "version_up", "suffix"],
+      "default": "fail",
+      "description": "What to do when a key or a file is already taken."
+    },
+    "link": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role"],
+          "properties": {
+            "role": { "const": "authority" },
+            "offline": {
+              "enum": ["fail", "read_only", "hold"],
+              "default": "fail",
+              "description": "What writes do when the authority is unreachable."
+            },
+            "clash": { "$ref": "#/$defs/clash" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role"],
+          "properties": {
+            "role": { "const": "active" },
+            "order": { "type": "integer", "description": "Position among the active links. Required when there are several." },
+            "rollback": { "type": "boolean", "default": true, "description": "Undo the whole write if this link fails." },
+            "clash": { "$ref": "#/$defs/clash" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["role"],
+          "properties": {
+            "role": { "const": "passive" },
+            "triggers": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/identifier" },
+              "description": "Events that run the link. Empty means only an explicit call runs it."
+            },
+            "clash": { "$ref": "#/$defs/clash" }
+          }
+        }
+      ]
     },
     "root": {
       "oneOf": [

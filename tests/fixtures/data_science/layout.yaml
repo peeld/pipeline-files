@@ -41,3 +41,9 @@ rules:
     keys: [artifact, ext]
     templates:
       fs: "outputs/{artifact}.{ext}"
+
+links:
+  run:
+    tracking: {role: authority}
+    storage: {role: active}
+    archive: {role: passive, triggers: [validated]}

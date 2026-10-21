@@ -61,9 +61,17 @@ rules:
     templates:
       fs: "media/{version}/{camera}[_{variant}]"
     attributes: {status: string, artist: string}
+
+links:
+  shot:
+    tracking: {role: authority}
+    files: {role: active}
+    review: {role: passive, triggers: [approved]}
 ```
 
 Here the media for shot 40, version 3, camera main, variant hero is at `fs://projects/alpha/shots/ABC/ABC_040/media/v003/main_hero`. On a render node, that location resolves under `/fast/projects`. On a Mac, it resolves under `/Volumes/projects`. Locations are written as URIs of backend, logical root and relative path ([decision 0009](decisions/0009-location-uris.md)).
+
+**Links.** The `links` section names, for each rule, its authority and its active and passive links, with their settings. Here the tracking database is the authority for shots, and the media and frame rules inherit that, because they declare no links of their own. A link name such as `tracking` is bound to a real backend by the tool that writes, so the configuration holds no connection details ([decision 0012](decisions/0012-link-configuration.md)).
 
 **Design guidelines**
 

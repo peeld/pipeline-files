@@ -23,6 +23,13 @@ Each entity type names exactly one authority, and every other place the entity e
 
 **Authority is configuration, and it can move.** Because the authority is declared per entity type, a team can start with files as the authority and later change to a database. That needs a migration tool, so plan for one.
 
+**In configuration** ([decision 0012](decisions/0012-link-configuration.md))
+
+- The `links` section gives each rule a set of named links, each with a role and the settings for that role. A child rule without links uses its parent's.
+- A tool binds each link name to a backend when it builds the write engine. An authority must keep records and an operation log, which SQLite does. An active link must be able to realize a record and undo it, which the filesystem does.
+- The engine refuses, when it is built, any setting it cannot carry out yet: the clash rules `version_up` and `suffix`, and the offline policy `hold`. Both arrive with holding and merge in phase 5.
+- With the offline policy `read_only`, a write while the authority is unreachable fails with a read-only error, and queries are answered by the first active link that can query.
+
 **Caution on filesystem authority.** When the authority is a filesystem, people and other programs change it outside the system. Links then follow by scanning or watching, not instantly, and they are only eventually consistent. This is a supported choice, but it should be a deliberate one. A database or service authority, where every write passes through the system, gives the guarantees described in this plan.
 
 ---

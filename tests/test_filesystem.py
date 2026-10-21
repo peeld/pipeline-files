@@ -6,6 +6,7 @@ import unicodedata
 import pytest
 
 from entitylayout import (
+    LINK_OPERATIONS,
     AmbiguousParseError,
     Backend,
     ConfigError,
@@ -179,7 +180,7 @@ def test_missing_root(tmp_path):
 
 
 def test_operations_are_published():
-    assert FilesystemBackend.supported_operations() == {"query", "exists"}
+    assert FilesystemBackend.supported_operations() == {"query", "exists", *LINK_OPERATIONS}
     assert not FilesystemBackend.supports("create")
     assert FilesystemBackend.supports("query")
     assert Backend.supported_operations() == frozenset()

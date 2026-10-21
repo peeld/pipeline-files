@@ -45,3 +45,10 @@ rules:
       material: string
       approval: string
       owner: string
+
+# Engineers can still read drawings from the share when the PDM database is down.
+links:
+  part:
+    pdm: {role: authority, offline: read_only}
+    share: {role: active}
+    supplier: {role: passive, triggers: [released]}

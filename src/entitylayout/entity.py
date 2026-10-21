@@ -23,6 +23,10 @@ class Entity:
     provisional: bool = False
     # Empty on backends that do not store attributes.
     attributes: dict[str, Any] = field(default_factory=dict)
+    # The internal ID, from a backend that keeps records; None elsewhere.
+    id: str | None = None
+    # Active links that are behind the authority, when its record is out of sync.
+    lagging: tuple[str, ...] = ()
 
     def __getitem__(self, key: str) -> Any:
         return self.fields[key]

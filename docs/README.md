@@ -1,6 +1,6 @@
 # Entity Layout & Storage Abstraction: Design Plan
 
-**Status:** Draft. Phases 1 to 3 are implemented. **Last updated:** 2026-10-21.
+**Status:** Draft. Phases 1 to 4 are implemented. **Last updated:** 2026-10-21.
 
 This plan defines a small, storage-neutral layer that lets tools ask for things by name and fields instead of by path, and keeps those things consistent across a filesystem, a database and cloud storage.
 
@@ -35,6 +35,9 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - [0009: Locations are URIs of backend, logical root and relative path](decisions/0009-location-uris.md)
 - [0010: Filesystem queries are strict and fail loudly](decisions/0010-filesystem-queries-are-strict.md)
 - [0011: SQLite keeps one entities table, and rows borrow a template for their location](decisions/0011-sqlite-table-layout.md)
+- [0012: Links are named per rule, with a role and settings, and bound to backends at run time](decisions/0012-link-configuration.md)
+- [0013: Records carry a state, every step is logged before it acts, and recovery replays the log](decisions/0013-records-operation-log-and-write-steps.md)
+- [0014: Sidecars are hidden JSON files, stamped with revision and hash](decisions/0014-json-sidecars.md)
 
 ## Notes for implementers and agents
 

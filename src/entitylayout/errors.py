@@ -40,3 +40,39 @@ class OperationNotSupportedError(LayoutError, NotImplementedError):
 
 class EntityExistsError(LayoutError):
     """An entity was created where one already exists."""
+
+
+class UnreachableError(LayoutError):
+    """A backend cannot reach the place its data lives, such as a database server that is down."""
+
+
+class ClashError(LayoutError):
+    """Something else already holds a location, such as a file with different content."""
+
+
+class UndoError(LayoutError):
+    """A link step cannot be undone without removing something it did not create."""
+
+
+class WriteError(LayoutError):
+    """A write did not commit. ``record`` is the authority's record as the write left it, if one was reserved."""
+
+    def __init__(self, message: str, record=None) -> None:
+        super().__init__(message)
+        self.record = record
+
+
+class WriteRolledBackError(WriteError):
+    """A write failed and was undone. Its record is marked failed."""
+
+
+class OutOfSyncError(WriteError):
+    """A write was kept in the authority, but an active link is behind and needs a retry."""
+
+
+class WriteIncompleteError(WriteError):
+    """A write stopped with its record still pending. Recovery finishes or undoes it from the operation log."""
+
+
+class ReadOnlyError(WriteError):
+    """The authority is unreachable and the offline policy allows reads only."""

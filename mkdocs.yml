@@ -68,3 +68,6 @@ nav:
       - decisions/0009-location-uris.md
       - decisions/0010-filesystem-queries-are-strict.md
       - decisions/0011-sqlite-table-layout.md
+      - decisions/0012-link-configuration.md
+      - decisions/0013-records-operation-log-and-write-steps.md
+      - decisions/0014-json-sidecars.md

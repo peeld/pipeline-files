@@ -45,3 +45,11 @@ rules:
       parameters: map
       operator: string
       quality_flag: string
+
+# Raw instrument data is never deleted to undo a write. A failed copy to the
+# storage array leaves the record out of sync, to be retried.
+links:
+  session:
+    lims: {role: authority}
+    storage: {role: active, rollback: false}
+    repository: {role: passive, triggers: [published]}
