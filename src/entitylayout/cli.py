@@ -9,10 +9,12 @@ import sys
 from collections.abc import Sequence
 from typing import Any
 
+from .backends import FilesystemBackend
 from .check import check_roots
 from .errors import LayoutError
 from .layout import Layout, load_config
 from .location import Location
+from .query import EntitySequence, Query, collapse_sequence, newest
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -33,6 +35,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parse.add_argument("--rule")
     parse.add_argument("--backend", default="fs", help="backend for a real path (default fs)")
 
+    query = commands.add_parser("query", help="partial fields to every matching entity, one JSON object per line")
+    query.add_argument("rule")
+    query.add_argument("fields", nargs="*", metavar="key=value")
+    query.add_argument("--newest", metavar="KEY", help="keep only the highest KEY in each group, such as version")
+    query.add_argument("--collapse", metavar="KEY", help="collapse a numbered KEY, such as frame, into ranges")
+    query.add_argument("--path", action="store_true", help="print real paths instead of JSON")
+
     args = parser.parse_args(argv)
     try:
         layout = load_config(args.config)
@@ -40,6 +49,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _check(layout)
         if args.command == "locate":
             return _locate(layout, args)
+        if args.command == "query":
+            return _query(layout, args)
         return _parse(layout, args)
     except LayoutError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -55,18 +66,43 @@ def _check(layout: Layout) -> int:
     return 1 if problems else 0
 
 
-def _locate(layout: Layout, args: argparse.Namespace) -> int:
-    rule = layout.rule(args.rule)
+def _fields(layout: Layout, rule_name: str, items: Sequence[str]) -> dict[str, Any]:
+    rule = layout.rule(rule_name)
     fields: dict[str, Any] = {}
-    for item in args.fields:
+    for item in items:
         name, sep, raw = item.partition("=")
         if not sep:
             raise LayoutError(f"expected key=value, got {item!r}")
         if name not in rule.keys:
             raise LayoutError(f"rule {rule.name!r} has no key {name!r}; its keys are {list(rule.keys)}")
         fields[name] = layout.keys[name].coerce(raw)
-    location = layout.locate(args.rule, fields, args.backend)
+    return fields
+
+
+def _locate(layout: Layout, args: argparse.Namespace) -> int:
+    location = layout.locate(args.rule, _fields(layout, args.rule, args.fields), args.backend)
     print(layout.real_path(location) if args.path else location.uri)
+    return 0
+
+
+def _query(layout: Layout, args: argparse.Namespace) -> int:
+    query = Query(args.rule, _fields(layout, args.rule, args.fields))
+    if args.newest:
+        query = query.then(newest(args.newest))
+    if args.collapse:
+        query = query.then(collapse_sequence(args.collapse))
+    for result in query.run(FilesystemBackend(layout)):
+        if isinstance(result, EntitySequence):
+            location = result.entities[0].location
+            record = {"rule": result.rule, "fields": result.fields, result.key: str(result)}
+        else:
+            location = result.location
+            record = {"rule": result.rule, "fields": result.fields, "location": location.uri}
+        if args.path:
+            suffix = f"  [{result.key} {result}]" if isinstance(result, EntitySequence) else ""
+            print(f"{layout.real_path(location)}{suffix}")
+        else:
+            print(json.dumps(record, default=_json_default, ensure_ascii=False))
     return 0
 
 

@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .errors import AmbiguousParseError, ConfigError, InvalidValueError, MissingKeyError, NoMatchError
-from .keys import KEY_NAME, Key
+from .keys import KEY_NAME, Key, nfc
 
 _TOKEN = re.compile(r"\{([^{}]*)\}|\[|\]|[{}]|[^{}\[\]]+")
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
@@ -140,8 +140,7 @@ class Template:
         Raises NoMatchError if text does not fit the template, and
         AmbiguousParseError if it fits in more than one way.
         """
-        results: list[dict[str, Any]] = []
-        self._match(self.tokens, text, 0, {}, results)
+        results = match_tokens(self.tokens, nfc(text), self.keys, limit=2)
         if not results:
             raise NoMatchError(f"{text!r} does not match {self.text!r}")
         if len(results) > 1:
@@ -149,46 +148,114 @@ class Template:
             raise AmbiguousParseError(f"{text!r} can be read more than one way as {self.text!r}: {readings}")
         return results[0]
 
-    def _match(
-        self,
-        tokens: tuple[Token, ...],
-        text: str,
-        pos: int,
-        fields: dict[str, Any],
-        results: list[dict[str, Any]],
-    ) -> None:
-        # Two distinct readings are enough to prove ambiguity.
-        if len(results) > 1:
-            return
-        if not tokens:
-            if pos == len(text) and fields not in results:
-                results.append(dict(fields))
-            return
-        token, rest = tokens[0], tokens[1:]
+    # Level by level
+
+    def variants(self) -> list[Variant]:
+        """The template with each combination of optional groups in or out, split into path segments."""
+        flat: list[tuple[tuple[Token, ...], frozenset[str]]] = [((), frozenset())]
+        for token in self.tokens:
+            if isinstance(token, Optional):
+                with_group = [(tokens + token.tokens, keys | set(token.key_names)) for tokens, keys in flat]
+                flat = flat + with_group
+            else:
+                flat = [(tokens + (token,), keys) for tokens, keys in flat]
+        return [Variant(keys, _split_segments(tokens)) for tokens, keys in flat]
+
+
+@dataclass(frozen=True)
+class Variant:
+    """One way a template can be written: which optional keys it includes, and its path segments."""
+
+    optional_keys: frozenset[str]
+    segments: tuple[tuple[Token, ...], ...]
+
+
+def match_tokens(
+    tokens: tuple[Token, ...],
+    text: str,
+    keys: Mapping[str, Key],
+    bound: Mapping[str, Any] | None = None,
+    *,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    """Every distinct way text can be read as tokens, agreeing with any already bound fields.
+
+    Each result includes the bound fields. With a limit, stops once that many
+    readings are found.
+    """
+    results: list[dict[str, Any]] = []
+    _match(tokens, text, 0, keys, dict(bound or {}), results, limit)
+    return results
+
+
+def format_tokens(tokens: tuple[Token, ...], keys: Mapping[str, Key], fields: Mapping[str, Any]) -> str:
+    """Write tokens with every key taken from fields. No defaults are applied."""
+    out = []
+    for token in tokens:
         if isinstance(token, str):
-            if text.startswith(token, pos):
-                self._match(rest, text, pos + len(token), fields, results)
-            return
-        if isinstance(token, Optional):
-            self._match(rest, text, pos, fields, results)
-            self._match(token.tokens + rest, text, pos, fields, results)
-            return
-        key = self.keys[token.name]
-        following = rest[0] if rest and isinstance(rest[0], str) else None
-        for end in range(pos + 1, len(text) + 1):
-            if following is not None and not text.startswith(following, end):
-                continue
-            try:
-                value = key.from_text(text[pos:end])
-            except InvalidValueError:
-                continue
-            if token.name in fields:
-                if fields[token.name] == value:
-                    self._match(rest, text, end, fields, results)
-                continue
-            fields[token.name] = value
-            self._match(rest, text, end, fields, results)
-            del fields[token.name]
+            out.append(token)
+        elif isinstance(token, KeyRef):
+            out.append(keys[token.name].to_text(fields[token.name]))
+        else:
+            raise ValueError("format_tokens takes tokens without optional groups")
+    return "".join(out)
+
+
+def _match(
+    tokens: tuple[Token, ...],
+    text: str,
+    pos: int,
+    keys: Mapping[str, Key],
+    fields: dict[str, Any],
+    results: list[dict[str, Any]],
+    limit: int | None,
+) -> None:
+    if limit is not None and len(results) >= limit:
+        return
+    if not tokens:
+        if pos == len(text) and fields not in results:
+            results.append(dict(fields))
+        return
+    token, rest = tokens[0], tokens[1:]
+    if isinstance(token, str):
+        if text.startswith(token, pos):
+            _match(rest, text, pos + len(token), keys, fields, results, limit)
+        return
+    if isinstance(token, Optional):
+        _match(rest, text, pos, keys, fields, results, limit)
+        _match(token.tokens + rest, text, pos, keys, fields, results, limit)
+        return
+    key = keys[token.name]
+    following = rest[0] if rest and isinstance(rest[0], str) else None
+    for end in range(pos + 1, len(text) + 1):
+        if following is not None and not text.startswith(following, end):
+            continue
+        try:
+            value = key.from_text(text[pos:end])
+        except InvalidValueError:
+            continue
+        if token.name in fields:
+            if fields[token.name] == value:
+                _match(rest, text, end, keys, fields, results, limit)
+            continue
+        fields[token.name] = value
+        _match(rest, text, end, keys, fields, results, limit)
+        del fields[token.name]
+
+
+def _split_segments(tokens: tuple[Token, ...]) -> tuple[tuple[Token, ...], ...]:
+    segments: list[list[Token]] = [[]]
+    for token in tokens:
+        if isinstance(token, str):
+            parts = token.split("/")
+            for i, part in enumerate(parts):
+                if i:
+                    segments.append([])
+                if part:
+                    segments[-1].append(part)
+        else:
+            segments[-1].append(token)
+    return tuple(_merge_literals(segment) for segment in segments)
 
 
 def _flatten(tokens: tuple[Token, ...]) -> Iterator[Token]:

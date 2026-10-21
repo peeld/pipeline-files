@@ -11,5 +11,6 @@ Settled decisions, one per file. Treat them as constraints when implementing.
 - [0007: YAML configuration in named sections, checked by a JSON Schema](0007-yaml-config-with-json-schema.md)
 - [0008: Template syntax, and parsing that refuses ambiguity](0008-template-syntax-and-strict-parsing.md)
 - [0009: Locations are URIs of backend, logical root and relative path](0009-location-uris.md)
+- [0010: Filesystem queries are strict and fail loudly](0010-filesystem-queries-are-strict.md)
 
 [Index](../README.md)

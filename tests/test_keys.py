@@ -30,15 +30,21 @@ def test_format_adds_prefix_and_suffix():
         tagged.from_text("<>")
 
 
-@pytest.mark.parametrize(
-    "bad", ["", "a/b", "a\\b", "C:", "..", ".", " lead", "trail ", "trail.", "tab\there", "\ud800"]
-)
+UNSAFE = ["", "a/b", "a\\b", "C:", "..", ".", " lead", "trail ", "trail.", "tab\there", "\ud800", ".hidden"]
+WINDOWS_DEVICES = ["CON", "aux", "nul.txt", "COM1", "lpt9.tar.gz"]
+
+
+@pytest.mark.parametrize("bad", UNSAFE + WINDOWS_DEVICES)
 def test_default_string_refuses_unsafe_names(bad):
     with pytest.raises(InvalidValueError):
         Key("name").validate(bad)
 
 
-@pytest.mark.parametrize("good", ["Acme & Søn", "a.b", "x", "日本語", "mixed Case 01", "a..b"])
+def test_explicit_choices_may_use_device_names():
+    assert Key("camera", choices=["aux"]).validate("aux") == "aux"
+
+
+@pytest.mark.parametrize("good", ["Acme & Søn", "a.b", "x", "日本語", "mixed Case 01", "a..b", "CONTOSO", "COM10"])
 def test_default_string_allows_ordinary_names(good):
     key = Key("name")
     assert key.from_text(key.to_text(good)) == good

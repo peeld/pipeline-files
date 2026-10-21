@@ -84,6 +84,15 @@ class Layout:
         # Links are kept as written until the authority and link engine reads them.
         self.links = dict(links or {})
 
+    def with_roots(self, locations: Mapping[str, str | os.PathLike]) -> Layout:
+        """A copy of this layout with some roots mapped to fixed locations, such as a sandbox."""
+        roots = dict(self.roots)
+        for name, location in locations.items():
+            if name not in roots:
+                raise LayoutError(f"no root named {name!r}")
+            roots[name] = Root(name, default=str(location))
+        return Layout(self.version, self.keys, self.rules, roots, self.links)
+
     def rule(self, name: str) -> Rule:
         try:
             return self.rules[name]

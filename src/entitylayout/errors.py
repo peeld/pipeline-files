@@ -32,3 +32,7 @@ class AmbiguousParseError(LayoutError):
 
 class RootNotMappedError(LayoutError):
     """A logical root has no real location on this machine."""
+
+
+class OperationNotSupportedError(LayoutError, NotImplementedError):
+    """The backend does not implement the operation that was attempted."""

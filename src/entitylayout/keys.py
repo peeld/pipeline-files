@@ -27,9 +27,13 @@ KEY_PROPERTIES = {
 # the path separator, characters Windows forbids in names, control characters
 # and lone surrogates (which cannot be encoded as a file name).
 _FORBIDDEN = r'/\\:*?"<>|\x00-\x1f\x7f\ud800-\udfff'
-# The default pattern also refuses leading or trailing whitespace and a
-# trailing dot, which Windows silently strips from names.
-DEFAULT_STRING_PATTERN = rf"[^{_FORBIDDEN}\s](?:[^{_FORBIDDEN}]*[^{_FORBIDDEN}\s.])?"
+# The default pattern also refuses leading or trailing whitespace, a trailing
+# dot (Windows silently strips both) and a leading dot, so hidden files such
+# as .DS_Store are never read as entities.
+DEFAULT_STRING_PATTERN = rf"[^{_FORBIDDEN}\s.](?:[^{_FORBIDDEN}]*[^{_FORBIDDEN}\s.])?"
+# Device names Windows reserves, with or without an extension. Refused by the
+# default pattern only; a key with its own pattern or choices decides for itself.
+_WINDOWS_DEVICES = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", re.IGNORECASE)
 DEFAULT_INT_PATTERN = r"-?[0-9]+"
 _DATE_DIRECTIVES = {"%Y": ("[0-9]{4}", 4), "%m": ("[0-9]{2}", 2), "%d": ("[0-9]{2}", 2)}
 _RESERVED_NAMES = {".", ".."}
@@ -89,6 +93,8 @@ class Key:
         if pattern is not None and type == "date":
             raise ConfigError(f"key {name!r}: date keys take date_format, not pattern")
         self.pattern = pattern
+        # Keys with neither a pattern nor choices get the default safety rules for names.
+        self._default_rules = pattern is None and choices is None
         try:
             self._pattern = re.compile(pattern if pattern is not None else self._default_pattern())
         except re.error as exc:
@@ -141,7 +147,7 @@ class Key:
             if not isinstance(value, str):
                 raise InvalidValueError(f"{self.name}: expected a string, got {value!r}")
             value = nfc(value)
-            if value in _RESERVED_NAMES:
+            if value in _RESERVED_NAMES or (self._default_rules and _WINDOWS_DEVICES.fullmatch(value)):
                 raise InvalidValueError(f"{self.name}: {value!r} is a reserved name")
             core = value
         elif self.type == "int":

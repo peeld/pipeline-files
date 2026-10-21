@@ -26,7 +26,8 @@ def key_values(key: Key) -> st.SearchStrategy:
     if key.choices is not None:
         return st.sampled_from(key.choices)
     if key.type == "string":
-        base = st.from_regex(key.pattern or DEFAULT_STRING_PATTERN, fullmatch=True)
+        # Capped in length so generated paths stay inside Windows' path limit.
+        base = st.from_regex(key.pattern or DEFAULT_STRING_PATTERN, fullmatch=True).filter(lambda t: len(t) <= 24)
     elif key.type == "int":
         if key.pattern is None:
             base = st.integers(min_value=-(10**12), max_value=10**12)

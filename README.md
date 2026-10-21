@@ -41,12 +41,12 @@ It is deliberately **not** a sync tool, a file merger, a permissions system or a
 
 ## Current state
 
-This is an **early-stage design, open for comment**, with the first phase of code in place.
+This is an **early-stage design, open for comment**, with the first two phases of code in place.
 
 - The full design is written up across [thirteen short documents](docs/README.md), with diagrams and worked examples from five different fields.
-- Nine decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
+- Ten decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
 - Everything else is a proposal, and some questions are [deliberately left open](docs/11-risks-and-implementation-considerations.md).
-- Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phase 1 is built:** a layout described once in configuration, resolved from fields to a location and back. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
+- Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phases 1 and 2 are built:** a layout described once in configuration, resolved from fields to a location and back, and queried by partial fields on the filesystem. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
 - The first usable version, after phase 3, will query by fields on two storage backends.
 
 ## Try it
@@ -61,6 +61,9 @@ python -m venv .venv
 # Fields to a location, and back
 .venv/bin/entitylayout tests/fixtures/vfx locate media project=alpha sequence=ABC shot=40 version=3 camera=main
 .venv/bin/entitylayout tests/fixtures/vfx parse fs://projects/alpha/shots/ABC/ABC_040/media/v003/main
+
+# Every media entity for shot 40, newest version only (needs the root to exist)
+.venv/bin/entitylayout tests/fixtures/vfx query media shot=40 --newest version
 ```
 
 The `tests/fixtures/` directory holds a configuration for each of the five worked examples.

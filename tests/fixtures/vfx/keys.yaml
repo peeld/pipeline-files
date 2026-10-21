@@ -14,7 +14,7 @@ keys:
     pad: 3
   camera:
     type: string
-    choices: [main, witness, aux]
+    choices: [main, witness, reference]
   variant:
     type: string
     pattern: "[a-z]+"

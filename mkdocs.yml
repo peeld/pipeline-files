@@ -66,3 +66,4 @@ nav:
       - decisions/0007-yaml-config-with-json-schema.md
       - decisions/0008-template-syntax-and-strict-parsing.md
       - decisions/0009-location-uris.md
+      - decisions/0010-filesystem-queries-are-strict.md

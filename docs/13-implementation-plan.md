@@ -1,6 +1,6 @@
 # Implementation plan
 
-This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. Phase 1 is built and its gate passes. Each later phase starts only after the gate before it passes.
+This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. Phases 1 and 2 are built and their gates pass. Each later phase starts only after the gate before it passes.
 
 ## Choices made before code
 
@@ -10,6 +10,7 @@ This turns the [build order](12-build-order-and-verification.md) into concrete s
 | Configuration format | YAML in named sections, one file or many, with a JSON Schema | [0007](decisions/0007-yaml-config-with-json-schema.md) |
 | Template syntax | `{key}` placeholders, `[ ... ]` optional groups, ambiguous names refused | [0008](decisions/0008-template-syntax-and-strict-parsing.md) |
 | Location format | `<backend>://<root>/<path>` | [0009](decisions/0009-location-uris.md) |
+| Filesystem query behavior | Skip names that do not fit, fail on names that fit two ways | [0010](decisions/0010-filesystem-queries-are-strict.md) |
 | Key defaults | Fixed values only. "Latest" is a query filter | [Configuration model](04-configuration-model.md) |
 | Embedded database | SQLite, from the Python standard library | To decide in phase 3 |
 | Filesystem attributes | A JSON sidecar with attributes, internal ID, config version, revision and hash | To decide in phase 4 |
@@ -24,11 +25,15 @@ This turns the [build order](12-build-order-and-verification.md) into concrete s
 | `src/entitylayout/layout.py` | Loading configuration, rule inheritance, and resolving in both directions |
 | `src/entitylayout/location.py` | Location URIs |
 | `src/entitylayout/check.py` | The validation pass for required directories |
-| `src/entitylayout/cli.py` | `entitylayout CONFIG check`, `locate` and `parse` |
+| `src/entitylayout/backends/base.py` | The backend interface and its published operations |
+| `src/entitylayout/backends/filesystem.py` | The filesystem backend: a level-by-level walk with pruning |
+| `src/entitylayout/entity.py` | The entities a query returns |
+| `src/entitylayout/query.py` | Queries and composable filters |
+| `src/entitylayout/cli.py` | `entitylayout CONFIG check`, `locate`, `parse` and `query` |
 | `schema/layout.schema.json` | The configuration's shape, for any language |
 | `tests/fixtures/` | One configuration per worked example: visual effects, data science, industrial design, office and lab |
 
-Later phases add `backends/`, `query/`, `engine/` and `holding/` beside these.
+Later phases add more backends, and `engine/` and `holding/` beside these.
 
 ## Phase 1: Schema and rules (done)
 
@@ -44,13 +49,14 @@ Later phases add `backends/`, `query/`, `engine/` and `holding/` beside these.
 - [x] A command line for checking, locating and parsing.
 - [x] **Gate:** a property test generates fields for every rule in all five fixtures, from each key's own definition. It checks that fields go to a location and back unchanged, and the same through a URI and a real path. A separate test shows the gate fails on a loosely constrained layout.
 
-## Phase 2: Filesystem backend and query
+## Phase 2: Filesystem backend and query (done)
 
-- [ ] A backend interface that publishes the operations it supports and fails on any other ([decision 0004](decisions/0004-operations-optional-and-fail-if-missing.md)).
-- [ ] A filesystem backend that walks one level at a time. It uses each template's literal text and known keys to prune, then parses every candidate strictly.
-- [ ] A query of a rule plus partial fields that returns entities, with a location only on request and a provisional flag that stays false until phase 5.
-- [ ] Composable filters: newest version, sort, group, and collapse a numbered sequence.
-- [ ] **Gate:** partial-field queries return exactly the expected entities from real directory trees built from each fixture.
+- [x] A backend interface that publishes the operations it supports and fails on any other ([decision 0004](decisions/0004-operations-optional-and-fail-if-missing.md)). The supported list is worked out from which operations a backend overrides, so it cannot drift from the code.
+- [x] A filesystem backend that walks one level at a time. A level whose keys are all known is checked directly; any other is listed once per query and every name parsed strictly ([decision 0010](decisions/0010-filesystem-queries-are-strict.md)).
+- [x] A query of a rule plus partial fields that returns entities with a location URI and a provisional flag, which stays false until phase 5.
+- [x] Composable filters: newest, sort, where, group, and collapse a numbered sequence into ranges.
+- [x] `exists` for a full set of fields, and a `query` command on the command line.
+- [x] **Gate:** for every rule in all five fixtures, a property test creates a random set of entities on disk, runs a random partial-field query, and checks the results are exactly the entities that match. Other tests check that known keys prune the walk, that junk names are skipped, and that ambiguous names fail.
 
 ## Phase 3: Second backend and metadata
 
@@ -87,6 +93,7 @@ python -m venv .venv
 .venv/bin/pip install -e ".[test]"
 .venv/bin/pytest
 .venv/bin/entitylayout tests/fixtures/vfx locate media project=alpha sequence=ABC shot=40 version=3 camera=main
+.venv/bin/entitylayout path/to/layout query media shot=40 --newest version
 ```
 
 ---

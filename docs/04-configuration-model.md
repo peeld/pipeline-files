@@ -26,7 +26,7 @@ Each kind is a top-level section of the configuration, beside a required `versio
 
 Defaults are fixed values. A moving target such as "the latest version" is a question about what exists, so it belongs to a query, not to a key definition. See [Query model](05-query-model.md).
 
-A string key with no pattern refuses anything unsafe in a name on common filesystems: `/`, `\`, the characters Windows forbids, control characters, leading or trailing spaces, a trailing dot, and the names `.` and `..`. Strings are compared in Unicode normal form C, so a name typed on one system matches the same name read back on another.
+A string key with no pattern or choices refuses anything unsafe in a name on common filesystems: `/`, `\`, the characters Windows forbids, control characters, leading or trailing spaces, a leading or trailing dot, and Windows device names such as `CON` and `AUX`. A leading dot is refused so that hidden files such as `.DS_Store` are never read as entities. Strings are compared in Unicode normal form C, so a name typed on one system matches the same name read back on another.
 
 **What a rule carries.** A rule lists its keys in order, names its parent and root, and gives a template for each backend that needs one. Because a rule inherits its parent's keys, root and template prefix, the shared part of a layout is written once. A rule can mark path segments as optional, and can name attributes that live beside the keys without being part of them.
 
@@ -40,7 +40,7 @@ keys:
   sequence: {type: string, pattern: "[A-Z]{2,4}"}
   shot:     {type: int, pad: 3}
   version:  {type: int, format: "v{value}", pad: 3}
-  camera:   {type: string, choices: [main, witness, aux]}
+  camera:   {type: string, choices: [main, witness, reference]}
   variant:  {type: string, pattern: "[a-z]+", required: false}
 
 roots:

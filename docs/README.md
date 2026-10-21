@@ -1,6 +1,6 @@
 # Entity Layout & Storage Abstraction: Design Plan
 
-**Status:** Draft. Phase 1 is implemented. **Last updated:** 2026-10-21.
+**Status:** Draft. Phases 1 and 2 are implemented. **Last updated:** 2026-10-21.
 
 This plan defines a small, storage-neutral layer that lets tools ask for things by name and fields instead of by path, and keeps those things consistent across a filesystem, a database and cloud storage.
 
@@ -33,6 +33,7 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - [0007: YAML configuration in named sections, checked by a JSON Schema](decisions/0007-yaml-config-with-json-schema.md)
 - [0008: Template syntax, and parsing that refuses ambiguity](decisions/0008-template-syntax-and-strict-parsing.md)
 - [0009: Locations are URIs of backend, logical root and relative path](decisions/0009-location-uris.md)
+- [0010: Filesystem queries are strict and fail loudly](decisions/0010-filesystem-queries-are-strict.md)
 
 ## Notes for implementers and agents
 

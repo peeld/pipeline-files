@@ -56,3 +56,31 @@ def test_check(capsys, tmp_path):
     assert capsys.readouterr().out.startswith("ok:")
     config.write_text(f"version: 1\nroots:\n  gone: {tmp_path / 'gone'}\n")
     assert main([str(config), "check"]) == 1
+
+
+def test_query(capsys, tmp_path):
+    config = tmp_path / "layout.yaml"
+    config.write_text(
+        "version: 1\n"
+        "keys: {shot: {type: int, pad: 3}, version: {type: int, format: 'v{value}', pad: 3},"
+        " frame: {type: int, pad: 4}}\n"
+        f"roots: {{shots: '{(tmp_path / 'shots').as_posix()}'}}\n"
+        "rules:\n"
+        "  render: {root: shots, keys: [shot, version], templates: {fs: '{shot}/{version}'}}\n"
+        "  frame: {parent: render, keys: [frame], templates: {fs: 'img.{frame}.exr'}}\n"
+    )
+    for version, frames in ((1, (1, 2)), (2, (1, 2, 3, 5))):
+        (tmp_path / "shots" / "010" / f"v{version:03d}").mkdir(parents=True)
+        for frame in frames:
+            (tmp_path / "shots" / "010" / f"v{version:03d}" / f"img.{frame:04d}.exr").write_text("")
+
+    assert main([str(config), "query", "render", "shot=10"]) == 0
+    lines = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [line["location"] for line in lines] == ["fs://shots/010/v001", "fs://shots/010/v002"]
+
+    assert main([str(config), "query", "frame", "--newest", "version", "--collapse", "frame"]) == 0
+    [line] = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert line == {"rule": "frame", "fields": {"shot": 10, "version": 2}, "frame": "1-3,5"}
+
+    assert main([str(config), "query", "frame", "version=1", "--path"]) == 0
+    assert capsys.readouterr().out.count("img.000") == 2
