@@ -4,6 +4,7 @@ from .backends import (
     AUTHORITY_OPERATIONS,
     CAPABILITIES,
     LINK_OPERATIONS,
+    MIGRATION_OPERATIONS,
     OPERATIONS,
     AttributeValidator,
     Backend,
@@ -11,7 +12,7 @@ from .backends import (
     SQLiteBackend,
 )
 from .check import Problem, check_roots
-from .engine import Engine
+from .engine import Engine, PassiveResult
 from .entity import Entity
 from .errors import (
     AmbiguousParseError,
@@ -50,6 +51,7 @@ __all__ = [
     "AUTHORITY_OPERATIONS",
     "CAPABILITIES",
     "LINK_OPERATIONS",
+    "MIGRATION_OPERATIONS",
     "OPERATIONS",
     "OUTCOMES",
     "STATES",
@@ -60,6 +62,7 @@ __all__ = [
     "Holding",
     "HoldingError",
     "MergeResult",
+    "PassiveResult",
     "NoRecordError",
     "RecordExistsError",
     "Link",

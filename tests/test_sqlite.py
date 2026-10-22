@@ -7,6 +7,7 @@ import pytest
 
 from entitylayout import (
     AUTHORITY_OPERATIONS,
+    MIGRATION_OPERATIONS,
     Backend,
     ConfigError,
     EntityExistsError,
@@ -47,7 +48,8 @@ def paths(entities):
 
 
 def test_operations_and_capabilities_are_published():
-    assert SQLiteBackend.supported_operations() == {"query", "exists", "create", *AUTHORITY_OPERATIONS}
+    expected = {"query", "exists", "create", *AUTHORITY_OPERATIONS, *MIGRATION_OPERATIONS}
+    assert SQLiteBackend.supported_operations() == expected
     assert SQLiteBackend.has_capability("attribute_queries")
     assert SQLiteBackend.has_capability("atomic_updates")
     assert not FilesystemBackend.has_capability("attribute_queries")

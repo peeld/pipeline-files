@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import json
 import os
@@ -12,7 +13,15 @@ from contextlib import contextmanager
 from typing import Any
 
 from ..entity import Entity
-from ..errors import ConfigError, EntityExistsError, InvalidValueError, LayoutError, NoRecordError, RecordExistsError
+from ..errors import (
+    ConfigError,
+    EntityExistsError,
+    InvalidValueError,
+    LayoutError,
+    NoRecordError,
+    RecordExistsError,
+    UnreachableError,
+)
 from ..keys import Key
 from ..layout import Layout, Rule
 from ..location import Location
@@ -43,7 +52,7 @@ _ENTITIES_TABLE = (
     " lagging TEXT NOT NULL DEFAULT '[]',"
     " requested TEXT)"
 )
-# One row per claimed record. The primary key makes a claim an atomic create.
+# One row per claimed record, or per claimed rule under _rule_claim. The primary key makes a claim an atomic create.
 _CLAIMS_TABLE = "CREATE TABLE claims (record TEXT PRIMARY KEY, claimant TEXT NOT NULL, since TEXT NOT NULL)"
 _V1_COLUMNS = ("id", "rule", "location", "config_version", "attributes")
 _VISIBLE = f"state IN ({', '.join(repr(s) for s in VISIBLE_STATES)})"
@@ -71,7 +80,9 @@ class SQLiteBackend(Backend):
     of sync records only. The operation log is written in the same
     transaction as each change to a record, so SQLite can be an authority.
     Claims are rows of a ``claims`` table, so two processes sharing the
-    database never recover or merge the same record at once.
+    database never recover or merge the same record at once. A migration
+    claims a whole rule in the same table, and from then on every write to
+    the rule's records raises UnreachableError (decision 0018).
     """
 
     capabilities = frozenset({"attribute_queries", "atomic_updates"})
@@ -185,10 +196,14 @@ class SQLiteBackend(Backend):
         link: str | None = None,
         detail: Mapping[str, Any] | None = None,
     ) -> None:
-        self._conn.execute(
-            "INSERT INTO operations (operation, record, step, link, detail) VALUES (?, ?, ?, ?, ?)",
-            (operation, record, step, link, canonical_json(dict(detail or {}))),
-        )
+        with self.transaction():
+            row = self._conn.execute("SELECT rule FROM entities WHERE id = ?", (record,)).fetchone()
+            if row is not None:
+                self._refuse_if_moving(row[0])
+            self._conn.execute(
+                "INSERT INTO operations (operation, record, step, link, detail) VALUES (?, ?, ?, ?, ?)",
+                (operation, record, step, link, canonical_json(dict(detail or {}))),
+            )
 
     def settle(self, operation: str, record: str, state: str, *, lagging: Sequence[str] = ()) -> Record:
         current = self.record(record)
@@ -240,6 +255,74 @@ class SQLiteBackend(Backend):
         else:
             self._conn.execute("DELETE FROM claims WHERE record = ? AND claimant = ?", (record, claimant))
 
+    # Migration operations
+
+    def claim_rule(self, rule: str, claimant: str) -> bool:
+        self._rule(rule)
+        return self.claim(_rule_claim(rule), claimant)
+
+    def release_rule(self, rule: str, claimant: str | None) -> None:
+        self.release(_rule_claim(rule), claimant)
+
+    def records(self, *rules: str) -> list[Record]:
+        names = [self._rule(rule).name for rule in rules]
+        # Rows from a version 1 database have no log, so they come first.
+        rows = self._conn.execute(
+            "SELECT entities.id FROM entities LEFT JOIN operations ON operations.record = entities.id"
+            f" WHERE entities.rule IN ({', '.join('?' * len(names))}) GROUP BY entities.id"
+            " ORDER BY COALESCE(MIN(operations.seq), 0), entities.id",
+            names,
+        )
+        return [self.record(row_id) for (row_id,) in rows.fetchall()]
+
+    def restore(self, record: Record, history: Sequence[Step]) -> Record:
+        r = self._rule(record.rule)
+        location = self.layout.locate(r.name, record.fields, self.name)
+        full = r.template(self.name).parse(location.path)
+        if full != record.fields:
+            raise LayoutError(f"record {record.id}: its fields {record.fields} read back from {location.uri} as {full}")
+        if record.state not in STATES:
+            raise LayoutError(f"record {record.id} ({location.uri}) has an unknown state {record.state!r}")
+        strays = [step.seq for step in history if step.record != record.id]
+        if strays:
+            raise LayoutError(f"record {record.id}: log entries {strays} belong to other records")
+        record = dataclasses.replace(record, location=location)
+        steps = [_step_key(step) for step in history]
+        with self.transaction():
+            self._refuse_if_moving(r.name)
+            if self._conn.execute("SELECT 1 FROM entities WHERE id = ?", (record.id,)).fetchone() is not None:
+                found = self.record(record.id)
+                here = self.history(record.id)
+                if [_step_key(step) for step in here[: len(steps)]] != steps:
+                    raise RecordExistsError(
+                        f"record {record.id} is already in {self.path!r}, with a log that does not start "
+                        f"with the one being restored",
+                        found,
+                    )
+                # A log that has grown since is this authority's own later work, so the record may differ.
+                if len(here) == len(steps) and found != record:
+                    raise RecordExistsError(
+                        f"record {record.id} is already in {self.path!r} with the same log but different fields: "
+                        f"{found} here, {record} being restored",
+                        found,
+                    )
+                return found
+            self._write_row(r, record, _encode_attributes(r, record.attributes))
+            self._conn.executemany(
+                "INSERT INTO operations (operation, record, step, link, detail) VALUES (?, ?, ?, ?, ?)",
+                [(op, record.id, step, link, canonical_json(detail)) for op, step, link, detail in steps],
+            )
+        return self.record(record.id)
+
+    def _refuse_if_moving(self, rule: str) -> None:
+        """Treat a rule that a migration has claimed as unreachable for writes (decision 0018)."""
+        row = self._conn.execute("SELECT claimant FROM claims WHERE record = ?", (_rule_claim(rule),)).fetchone()
+        if row is not None:
+            raise UnreachableError(
+                f"{self.path!r}: rule {rule!r} is moving to another authority, claimed by {row[0]!r}, "
+                f"so it cannot be written here"
+            )
+
     def _insert(
         self,
         rule: str,
@@ -275,27 +358,35 @@ class SQLiteBackend(Backend):
             content_hash=content_hash,
             requested=requested,
         )
-        names = list(full)
+        with self.transaction():
+            self._refuse_if_moving(r.name)
+            if record_id is not None:
+                self._replace_failed(record_id)
+            self._write_row(r, record, stored)
+            self.log(operation, record.id, "reserved" if state == "pending" else state, detail={"kind": "create"})
+        return record
+
+    def _write_row(self, rule: Rule, record: Record, stored: str) -> None:
+        """Insert a record's row, with its attributes already encoded as stored."""
+        names = list(record.fields)
         columns = [
             *("id", "rule", "location", "config_version", "attributes", "state", "revision", "content_hash"),
-            "requested",
+            *("lagging", "requested"),
         ]
-        params = [record.id, r.name, location.path, record.config_version, stored, state, 1, content_hash]
-        params.append(None if requested is None else canonical_json(requested))
-        params.extend(self._to_column(n, full[n]) for n in names)
+        params = [
+            *(record.id, rule.name, record.location.path, record.config_version, stored),
+            *(record.state, record.revision, record.content_hash, json.dumps(list(record.lagging))),
+            None if record.requested is None else canonical_json(record.requested),
+        ]
+        params.extend(self._to_column(n, record.fields[n]) for n in names)
         sql = (
             f"INSERT INTO entities ({', '.join([*columns, *map(_column, names)])})"
             f" VALUES ({', '.join('?' * len(params))})"
         )
-        with self.transaction():
-            if record_id is not None:
-                self._replace_failed(record_id)
-            try:
-                self._conn.execute(sql, params)
-            except sqlite3.IntegrityError:
-                raise EntityExistsError(f"rule {r.name!r}: an entity already exists at {location.uri}") from None
-            self.log(operation, record.id, "reserved" if state == "pending" else state, detail={"kind": "create"})
-        return record
+        try:
+            self._conn.execute(sql, params)
+        except sqlite3.IntegrityError:
+            raise EntityExistsError(f"rule {rule.name!r}: an entity already exists at {record.location.uri}") from None
 
     def _replace_failed(self, record_id: str) -> None:
         """Make way for a record with a given ID: refuse one that has not failed, and remove a failed one."""
@@ -425,6 +516,16 @@ class SQLiteBackend(Backend):
             lagging=tuple(json.loads(lagging)),
             requested=None if requested is None else decode_fields(self.layout, rule, json.loads(requested), row_id),
         )
+
+
+def _rule_claim(rule: str) -> str:
+    # Record IDs are uuids, which never contain ':', so a rule's claim cannot meet a record's.
+    return f"rule:{rule}"
+
+
+def _step_key(step: Step) -> tuple[str, str, str | None, dict[str, Any]]:
+    """What a log entry says, without its sequence number, which each authority gives its own."""
+    return step.operation, step.step, step.link, step.detail
 
 
 def _column(key: str) -> str:

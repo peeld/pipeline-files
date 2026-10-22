@@ -14,7 +14,7 @@ flowchart TB
     g4{{"Gate: injected failures at every step<br/>leave only the declared record states"}}
     p5["<b>5. Holding and merge</b><br/>Per-element uuid holding, dependency order<br/>Clash rules: version up, suffix, fail"]
     g5{{"Gate: replayed offline sessions with injected<br/>clashes resolve exactly as configured"}}
-    p6["<b>6. Passive links and migration</b><br/>Triggers, object-storage backend<br/>Tool to change an entity type's authority"]
+    p6["<b>6. Passive links and migration</b><br/>A call that realizes passive links<br/>Moving an entity type to a new authority"]
     g6{{"Gate: a migrated entity type keeps identity,<br/>history and every link intact"}}
     p1 --> g1 --> p2 --> g2 --> p3 --> g3 --> p4 --> g4 --> p5 --> g5 --> p6 --> g6
 ```
@@ -27,6 +27,7 @@ A first usable version is phases 1 to 3: a layout described once, queried by fie
 - **One query suite, every backend.** The same queries run against each backend and the results must match.
 - **Fault injection through the write flow.** Fail the authority, fail each link, and crash between steps. Assert the record state that results each time.
 - **Replay tests for holding.** Scripted offline sessions with deliberately clashing keys, missing parents and duplicate merges.
+- **Replayed migrations.** Move a history with records in every state to a new authority, crash the move at each step and run it again, and compare with no move at all.
 - **Domain fixtures.** Each worked example in this plan becomes a configuration fixture that the test suite loads.
 
 ---

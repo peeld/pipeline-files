@@ -74,3 +74,5 @@ nav:
       - decisions/0015-merge-trigger-and-age-limit.md
       - decisions/0016-holding-elements-claims-and-merge.md
       - decisions/0017-clash-keys-and-the-requested-key.md
+      - decisions/0018-migration-keeps-identity-history-and-links.md
+      - decisions/0019-passive-links-run-on-one-call.md

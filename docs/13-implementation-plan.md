@@ -1,6 +1,6 @@
 # Implementation plan
 
-This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. Phases 1 to 5 are built and their gates pass. Phase 6 is next. Each later phase starts only after the gate before it passes.
+This turns the [build order](12-build-order-and-verification.md) into concrete steps, and records where the work stands. All six phases are built and their gates pass. What comes next is listed under "Known gaps and follow-ups".
 
 ## Choices made before code
 
@@ -19,6 +19,8 @@ This turns the [build order](12-build-order-and-verification.md) into concrete s
 | Merge trigger and age limit | Merge on its own unless the rule says `merge: confirm`; older than `max_age` waits for a person | [0015](decisions/0015-merge-trigger-and-age-limit.md) |
 | Holding and merge | A folder per element with a manifest, claims by atomic create, a merge is a write under the uuid | [0016](decisions/0016-holding-elements-claims-and-merge.md) |
 | Clash keys | The rule names its version and suffix keys, the link that finds a clash decides, the requested key is kept | [0017](decisions/0017-clash-keys-and-the-requested-key.md) |
+| Migration | A site's script that keeps identity, history and links, with the old authority offline for the rule | [0018](decisions/0018-migration-keeps-identity-history-and-links.md) |
+| Passive links | One call by link or event name, on committed records, with a result per link and no retries | [0019](decisions/0019-passive-links-run-on-one-call.md) |
 
 ## Source layout
 
@@ -31,18 +33,19 @@ This turns the [build order](12-build-order-and-verification.md) into concrete s
 | `src/entitylayout/location.py` | Location URIs |
 | `src/entitylayout/links.py` | The links section: one authority, ordered active links and passive links per rule |
 | `src/entitylayout/records.py` | Authority records and their states, the operation log entries, content hashes and sidecars |
-| `src/entitylayout/engine.py` | The write flow: reserve, realize active links in order, settle; rollback, recovery, clash rules, holding and merge |
+| `src/entitylayout/engine.py` | The write flow: reserve, realize active links in order, settle; rollback, recovery, clash rules, holding, merge and passive links |
 | `src/entitylayout/holding.py` | Held elements: manifests, content, claims, and the decisions a person makes on them |
 | `src/entitylayout/check.py` | The validation pass for required directories |
 | `src/entitylayout/backends/base.py` | The backend interface and its published operations |
 | `src/entitylayout/backends/filesystem.py` | The filesystem backend: a level-by-level walk with pruning, and an idempotent link step with undo |
-| `src/entitylayout/backends/sqlite.py` | The SQLite backend: one table of records, queries compiled to SQL, rows checked on read, the operation log |
+| `src/entitylayout/backends/sqlite.py` | The SQLite backend: one table of records, queries compiled to SQL, rows checked on read, the operation log, the migration operations |
 | `src/entitylayout/validation.py` | The optional attribute validation layer |
 | `src/entitylayout/entity.py` | The entities a query returns |
 | `src/entitylayout/query.py` | Queries and composable filters |
 | `src/entitylayout/cli.py` | `entitylayout CONFIG check`, `locate`, `parse` and `query`, on the filesystem or a database |
 | `schema/layout.schema.json` | The configuration's shape, for any language |
 | `tests/fixtures/` | One configuration per worked example: visual effects, data science, industrial design, office and lab |
+| `tests/reference_migration.py` | The reference migration script that the phase 6 gate runs |
 
 Later phases add more backends beside these.
 
@@ -83,7 +86,7 @@ Later phases add more backends beside these.
 
 ## Known gaps and follow-ups
 
-These came up while building phases 1 to 5. None blocks phase 6.
+These came up while building phases 1 to 6.
 
 - **Windows and macOS are untested.** The test workflow covers them. It first ran when `main` was pushed on 2026-10-21, and its results have not been checked yet. The likely trouble spots are case-insensitive names and path length.
 - **A query cannot ask for an optional key to be absent.** Leaving a key out, or passing None, means "anything". If people need "no variant", it needs its own marker.
@@ -91,23 +94,25 @@ These came up while building phases 1 to 5. None blocks phase 6.
 - **Finding keys that could contain `/` is a heuristic.** The filesystem backend tests a few sample values and looks for `/` in the pattern. A pattern that allows `/` only in unusual positions could slip through.
 - **A permission error during a walk is not handled.** It currently propagates and stops the query. Decide whether to skip and report it instead.
 - **Templates cannot contain literal `{`, `}`, `[` or `]`.** Add an escape syntax if a real layout needs one.
-- **The property tests take about 110 seconds.** Nearly all of that is Hypothesis generating values from the wide default string pattern, not the library. The phase 4 and phase 5 gates add about 20 seconds each.
+- **The property tests take about 110 seconds.** Nearly all of that is Hypothesis generating values from the wide default string pattern, not the library. The phase 4, 5 and 6 gates add about 20 seconds each.
 - **SQLite cannot hold an `int` key beyond 64 bits.** A pattern such as `[0-9]+` allows one on the filesystem. Creating or querying one in SQLite fails loudly. If a layout needs such keys, store them as TEXT with a sortable encoding.
 - **Parent rows are not implied in a database.** On the filesystem, a media directory implies its shot directory. In SQLite, the shot exists only if it was created. An import tool that loads a tree must create parent rows too.
 - **Attribute filters test equality only.** Ranges, "absent" and container values need a `where` filter for now. The JSON column is not indexed, so attribute filters scan a rule's rows.
 - **A recovery can still meet a write in progress.** Recoveries and merges claim each record, so two of them never work on one record. A plain create does not claim its record, so a recovery that runs while a create is part way could settle it too. Run `recover()` when the tool starts, before it writes.
 - **Claims do not expire.** A process that dies while it holds a claim leaves it for a person to release, with `Holding.release` or `Engine.release`. An engine given a stable `claimant` name takes its own claims back after a restart.
 - **A lost file content leaves a record out of sync.** The authority keeps a file's hash, not its bytes. If a crash comes before the file is written and rollback is off, only `retry()` with the content can finish it.
-- **There are no updates or deletes yet.** Records start and stay at revision 1. Overwrites, renames and deletes cannot be undone, so they will fall back to out of sync with a retry, as the write lifecycle describes.
-- **Hand-edited sidecars are detected, not applied.** Applying one as a proposed edit against its base revision needs an update through the write flow, which does not exist yet. So does holding an offline edit, rather than a create.
-- **Only creates are held.** The manifest has no base revision yet, for the same reason.
-- **Version up works on integer keys only.** A letter revision such as `A`, `B` and then `AA` needs a defined next value.
+- **There are no updates or deletes yet.** Records start and stay at revision 1, and only creates are held. Updates need their own decision, with a base revision. Applying hand-edited sidecars and holding offline edits both follow from it. Overwrites, renames and deletes cannot be undone, so they will fall back to out of sync with a retry, as the write lifecycle describes.
+- **Version up works on integer keys only.** For letter revisions such as `A`, `B` and then `AA`, a key type would define its next value.
 - **A link clash with rollback off stays out of sync.** The record keeps the requested key, and a person must clear the place, because a record cannot be renamed yet.
-- **Holding has no fallback and no backup copy.** If the holding area cannot be reached, the create fails. Document 11 suggests copying held content to the first active link as a backup, which is not built.
+- **Holding has no fallback.** If the holding area cannot be reached, the create fails. A backup copy of held content is not planned.
+- **A passive link cannot read a file's content for itself.** A tool that copies a file entity to a passive link passes the content, as with `retry`. Reading it from an active link would need a read operation on links.
+- **A passive link that is behind is not tracked.** Its failure is reported to the caller and kept in the log, but the record carries no state for it, so nothing lists the passive links that are behind.
+- **Only SQLite supports migration.** A migration needs both authorities to support `claim_rule`, `records` and `restore`. A migration also never changes keys or the layout.
+- **There is no object-storage backend.** [Query model](05-query-model.md) says how one would list. Build it when a site needs one.
 - **A hidden staging folder can be left behind.** If a process dies while it writes an element, a `.<uuid>.tmp` folder stays in the holding area. It is never read as an element, and it is never deleted automatically.
-- **The command line cannot write.** There is no `create` or `recover` command yet.
+- **The command line cannot write.** There is no `create`, `recover`, `merge` or passive link command yet.
 - **Writes use one temporary file and a rename.** A file that appears at the target between the check and the rename is replaced. Closing that gap needs a create-if-absent primitive per platform.
-- **The database schema only grows.** Opening a database adds columns for new keys, but never retypes or drops one. Changing a key's type needs a migration (phase 6).
+- **The database schema only grows.** Opening a database adds columns for new keys, but never retypes or drops one. Changing a key's type is not supported ([decision 0018](decisions/0018-migration-keeps-identity-history-and-links.md)).
 
 ## Phase 4: Authority, active links, rollback (done)
 
@@ -131,18 +136,13 @@ These came up while building phases 1 to 5. None blocks phase 6.
 - [x] The clash rules `version_up` and `suffix`, on keys each rule names, decided by the link that finds the clash, with the requested key kept ([decision 0017](decisions/0017-clash-keys-and-the-requested-key.md)). SQLite schema version 3 adds the `requested` column and the `claims` table, and upgrades a version 2 database when it is opened.
 - [x] **Gate:** for every rule in all five fixtures, with and without a held parent, and for each clash rule the clashing rule can carry, at the authority and at the active link, a property test plays an offline session and injects the clash. Each element must end in the outcome the configuration gives, with the final and requested keys it gives, and the other side of the clash untouched. The merge is then crashed at each of its steps and merged again by the same claimant, and must end exactly where the uninterrupted merge ended. Merging the settled session again, and merging copies of merged elements, must change nothing.
 
-**Design notes for phase 6**
+## Phase 6: Passive links and migration (done)
 
-- **Passive links use the link steps.** A passive link realizes a committed record with the same `realize`, `undo` and `clash` operations, on its own trigger and outside the commit.
-- **An object-storage backend** needs `realize` and `undo` that log each object before writing it, and `clash` for its clash rule. Writing only when an object is absent is the idempotent step.
-- **Migration keeps internal IDs.** Moving an entity type to a new authority copies records with their IDs, states, revisions, requested keys and logs, so held elements still merge by ID afterwards.
-- **Updates come first if edits are wanted.** Hand-edited sidecars and held edits both need an update with a base revision, which would be its own decision.
-
-## Phase 6: Passive links and migration
-
-- [ ] Event triggers for passive links, and an object-storage backend.
-- [ ] Decide whether migration is a script or a supported tool, then build it.
-- [ ] **Gate:** a migrated entity type keeps identity, history and every link.
+- [x] How migration works, recorded as [decision 0018](decisions/0018-migration-keeps-identity-history-and-links.md): a site's script that keeps identity, history and links, with the old authority offline for the rule.
+- [x] `Engine.realize_passive`, recorded as [decision 0019](decisions/0019-passive-links-run-on-one-call.md): a committed record is realized in one passive link, or in every one an event triggers, with the same link steps and outside the commit. Each link's result is returned, and nothing is rolled back or retried. A bound passive link needs `realize`, and a clash rule of `fail`.
+- [x] The migration operations, in `MIGRATION_OPERATIONS`: `claim_rule` and `release_rule` claim a whole rule, after which every write to it raises `UnreachableError`; `records` lists the records of several rules in the order first logged; `restore` writes one under its own ID with its log, idempotently. SQLite implements them with no schema change: a rule's claim is a row of the `claims` table.
+- [x] The reference script in `tests/reference_migration.py`, and how to use it in [Authority and links](06-authority-and-links.md).
+- [x] **Gate:** for every fixture, the rules that share its links move with the reference script after a random history of directories and files, some failed, crashed or out of sync, and some realized in the passive link, a few of those part way. Every record keeps its ID, state, revision, fields, requested key, lagging links, attributes, content hash, config version and log, nothing on disk changes, and both authorities answer queries alike. Recovery and the passive link, run on the new authority, must end exactly where they end on the old one with no move. A tool on the old authority holds new work, which merges into the new one under its uuid. The move is crashed at each step and run again, and must end in the same place, and running it again once finished changes nothing.
 
 ## Working on the code
 

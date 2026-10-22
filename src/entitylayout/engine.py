@@ -11,6 +11,10 @@ goes to holding instead, and ``merge`` later writes it through the same flow
 under its holding uuid (decisions 0015 and 0016). A key that is taken is
 settled by the clash rule of the link that found it (decision 0017).
 
+Passive links run only when a tool calls ``realize_passive``, by link name
+or by event name, on a committed record (decision 0019). They use the same
+link steps, outside any commit, and never roll back or retry.
+
 The flow is a list of named steps, and the engine calls ``checkpoint`` with
 each name just before the step runs. Raising an exception there is how tests
 make a step fail.
@@ -19,7 +23,8 @@ make a step fail.
 | --- | --- |
 | ``probe:<link>`` | Before an active link whose clash rule is not fail is checked for a clash |
 | ``reserve`` | Before the authority records the entity as pending, once per key tried |
-| ``realize:<link>`` | Before an active link starts |
+| ``passive:<link>`` | Before a passive link's run is logged, ahead of its ``realize:<link>`` |
+| ``realize:<link>`` | Before an active or passive link starts |
 | ``<link>:<item>`` | Before a link makes one item, such as ``files:dir``, once the item is in the log |
 | ``realized:<link>`` | After a link has made everything |
 | ``undo:<link>`` | Before a link's items are removed during a rollback |
@@ -36,6 +41,7 @@ import os
 import socket
 import uuid
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from .backends.base import AUTHORITY_OPERATIONS, LINK_OPERATIONS, Backend
@@ -76,12 +82,24 @@ def _no_checkpoint(step: str) -> None:
     pass
 
 
+@dataclass(frozen=True)
+class PassiveResult:
+    """What one passive link did with a record. ``error`` is None when the link was realized."""
+
+    link: str
+    error: Exception | None = None
+
+    @property
+    def realized(self) -> bool:
+        return self.error is None
+
+
 class Engine:
     """Writes entities through their authority and active links, and reads them from the authority.
 
     ``stores`` binds each link name in the layout's links section to a
-    backend. Every authority and active link must be bound. Passive links run
-    only on their triggers, which a later phase adds, so they may be left out.
+    backend. Every authority and active link must be bound. A passive link
+    may be left out; it is needed only when ``realize_passive`` runs it.
 
     ``holding`` is where creates go when an authority with the offline policy
     hold is unreachable, and the only place ``merge`` takes elements from.
@@ -187,6 +205,64 @@ class Engine:
     def release(self, rule: str, record: str) -> None:
         """Drop whatever claim holds a record, as a person may after a recovery or merge dies part way."""
         self.stores[self._links(self.layout.rule(rule)).authority.name].release(record, None)
+
+    def realize_passive(
+        self,
+        rule: str,
+        record: str,
+        *,
+        link: str | None = None,
+        event: str | None = None,
+        content: bytes | None = None,
+    ) -> list[PassiveResult]:
+        """Realize a committed record in one passive link, or in every one that event triggers, in config order.
+
+        Each link runs the same steps as an active link, logged in the
+        authority, but outside the commit: the record stays as it is whatever
+        happens. A link that fails is reported in its result and the next one
+        still runs. Nothing is rolled back or retried; calling again is safe,
+        because link steps are idempotent. A file entity needs its content
+        unless the link already holds it.
+
+        An event no rule's passive link names is refused, as a likely typo. An
+        event this rule's links do not name runs nothing.
+        """
+        r = self.layout.rule(rule)
+        links = self._links(r)
+        if (link is None) == (event is None):
+            raise LayoutError(f"rule {rule!r}: give exactly one of link= or event= to realize passive links")
+        if link is not None:
+            chosen = [p for p in links.passive if p.name == link]
+            if not chosen:
+                names = [p.name for p in links.passive]
+                raise ConfigError(f"rule {rule!r} has no passive link {link!r}; its passive links are {names}")
+        else:
+            named = {t for rl in self._linked_rules() for p in rl.links.passive for t in p.triggers}
+            if event not in named:
+                raise ConfigError(f"no rule has a passive link triggered by {event!r}; the events are {sorted(named)}")
+            chosen = [p for p in links.passive if event in p.triggers]
+        unbound = [p.name for p in chosen if p.name not in self.stores]
+        if unbound:
+            raise ConfigError(f"rule {rule!r}: passive links {unbound} are not bound to a backend")
+        authority = self.stores[links.authority.name]
+        found = authority.record(record)
+        if found.rule != r.name:
+            raise LayoutError(f"record {record} ({found.location.uri}) is of rule {found.rule!r}, not {rule!r}")
+        if found.state != "committed":
+            raise LayoutError(f"record {record} ({found.location.uri}) is {found.state}, so its passive links wait")
+        detail = {"event": event} if event else None
+        results = []
+        for passive in chosen:
+            operation = str(uuid.uuid4())
+            try:
+                self.checkpoint(f"passive:{passive.name}")
+                authority.log(operation, found.id, "passive", link=passive.name, detail=detail)
+                self._realize(passive, authority, found, operation, content)
+            except Exception as exc:
+                results.append(PassiveResult(passive.name, exc))
+            else:
+                results.append(PassiveResult(passive.name))
+        return results
 
     # Holding and merge
 
@@ -647,13 +723,21 @@ class Engine:
     def _check(self, rule: Rule, links: Links) -> None:
         """Fail now on any binding or setting this engine cannot carry out."""
         context = f"rule {rule.name!r}"
-        bound = [id(self.stores[link.name]) for link in (links.authority, *links.active) if link.name in self.stores]
+        bound = [id(self.stores[link.name]) for link in links if link.name in self.stores]
         if len(set(bound)) != len(bound):
             raise ConfigError(f"{context}: one backend is bound to more than one of its links")
-        for link, needed in ((links.authority, AUTHORITY_OPERATIONS), *((a, LINK_OPERATIONS) for a in links.active)):
+        passive = [(link, ("realize",)) for link in links.passive if link.name in self.stores]
+        needs = [(links.authority, AUTHORITY_OPERATIONS), *((a, LINK_OPERATIONS) for a in links.active), *passive]
+        for link, needed in needs:
             backend = self.stores.get(link.name)
             if backend is None:
                 raise ConfigError(f"{context}: {link.role} link {link.name!r} is not bound to a backend")
+            # A passive link realizes a committed record, whose key can no longer change.
+            if link.role == "passive" and link.clash != "fail":
+                raise ConfigError(
+                    f"{context}: passive link {link.name!r} has clash rule {link.clash!r}, but a passive link "
+                    f"can only fail on a clash, as the record it copies is already committed"
+                )
             if backend.name not in rule.templates:
                 raise ConfigError(
                     f"{context}: link {link.name!r} is {backend!r}, but the rule has no {backend.name!r} template"

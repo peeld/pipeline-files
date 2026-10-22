@@ -19,5 +19,7 @@ Settled decisions, one per file. Treat them as constraints when implementing.
 - [0015: Held work merges on its own unless the rule asks for confirmation, and old work always waits for a person](0015-merge-trigger-and-age-limit.md)
 - [0016: Held elements are folders with a manifest, claims are atomic creates, and a merge is a write under the element's uuid](0016-holding-elements-claims-and-merge.md)
 - [0017: A clash rule changes a key the rule names, the link that finds the clash decides, and the requested key is kept](0017-clash-keys-and-the-requested-key.md)
+- [0018: Migration is a site's script that keeps identity, history and links, with the old authority offline](0018-migration-keeps-identity-history-and-links.md)
+- [0019: A passive link runs on one call, by link or event name, and reports each link's result](0019-passive-links-run-on-one-call.md)
 
 [Index](../README.md)

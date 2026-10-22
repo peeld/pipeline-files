@@ -41,7 +41,7 @@ It is deliberately **not** a sync tool, a file merger, a permissions system or a
 
 ## Current state
 
-This is an **early-stage design, open for comment**, with the first five phases of code in place.
+This is an **early-stage design, open for comment**, with all six phases of code in place.
 
 - The full design is written up across [thirteen short documents](docs/README.md), with diagrams and worked examples from five different fields.
 - Seventeen decisions are settled and recorded in [docs/decisions/](docs/decisions/README.md).
@@ -49,7 +49,7 @@ This is an **early-stage design, open for comment**, with the first five phases 
 - Implementation runs in [six phases](docs/12-build-order-and-verification.md), each with a test gate. **Phases 1 to 3 are built:** a layout described once in configuration, resolved from fields to a location and back, and queried by partial fields on the filesystem or an SQLite database, with identical answers from both.
 - **Phase 4 is built:** writes go to an authority first and then to each active link in order. A failure at any step is undone or left visibly out of sync, and recovery finishes a crashed write from the operation log. Progress is tracked in the [implementation plan](docs/13-implementation-plan.md).
 - **Phase 5 is built:** while the authority is unreachable, new work is held one element at a time and shown to its owner as provisional. A merge later writes each element under its own ID, parents first. Key clashes are settled by version up, a number suffix or a person, as the configuration says.
-- Passive links and migration come in phase 6.
+- **Phase 6 is built:** a tool realizes a committed record in its passive links, such as an archive or a review copy, when its own event happens. An entity type can move to a new authority with a site's script that keeps every record's identity, history and links, while tools still pointed at the old authority hold new work for the new one.
 
 ## Try it
 

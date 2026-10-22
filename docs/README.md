@@ -1,6 +1,6 @@
 # Entity Layout & Storage Abstraction: Design Plan
 
-**Status:** Draft. Phases 1 to 5 are implemented. **Last updated:** 2026-10-21.
+**Status:** Draft. Phases 1 to 6 are implemented. **Last updated:** 2026-10-21.
 
 This plan defines a small, storage-neutral layer that lets tools ask for things by name and fields instead of by path, and keeps those things consistent across a filesystem, a database and cloud storage.
 
@@ -41,6 +41,8 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - [0015: Held work merges on its own unless the rule asks for confirmation, and old work always waits for a person](decisions/0015-merge-trigger-and-age-limit.md)
 - [0016: Held elements are folders with a manifest, claims are atomic creates, and a merge is a write under the element's uuid](decisions/0016-holding-elements-claims-and-merge.md)
 - [0017: A clash rule changes a key the rule names, the link that finds the clash decides, and the requested key is kept](decisions/0017-clash-keys-and-the-requested-key.md)
+- [0018: Migration is a site's script that keeps identity, history and links, with the old authority offline](decisions/0018-migration-keeps-identity-history-and-links.md)
+- [0019: A passive link runs on one call, by link or event name, and reports each link's result](decisions/0019-passive-links-run-on-one-call.md)
 
 ## Notes for implementers and agents
 

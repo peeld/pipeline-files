@@ -13,7 +13,13 @@ A backend that keeps records with states and an operation log implements
 the authority operations and can be an authority. One that can realize a
 record idempotently and undo only what it made can be an active link. An
 active link whose clash rule is not ``fail`` also needs ``clash``, so a
-clash is found before anything is written.
+clash is found before anything is written. A passive link needs ``realize``
+only, since it is never rolled back.
+
+The migration operations let a site's script move a rule to a new authority
+(decision 0018). The old authority claims the whole rule, which makes every
+write to it there unreachable, and lists each record with its log. The new
+one restores each record under its own ID.
 """
 
 from __future__ import annotations
@@ -28,7 +34,8 @@ from ..records import Record, Step
 
 AUTHORITY_OPERATIONS = ("reserve", "log", "settle", "record", "history", "unsettled", "claim", "release")
 LINK_OPERATIONS = ("realize", "undo")
-OPERATIONS = ("query", "exists", "create", *AUTHORITY_OPERATIONS, *LINK_OPERATIONS, "clash")
+MIGRATION_OPERATIONS = ("claim_rule", "release_rule", "records", "restore")
+OPERATIONS = ("query", "exists", "create", *AUTHORITY_OPERATIONS, *LINK_OPERATIONS, "clash", *MIGRATION_OPERATIONS)
 CAPABILITIES = (
     # Queries can filter by attribute equality, including attributes the rule does not declare.
     "attribute_queries",
@@ -162,6 +169,38 @@ class Backend:
     def release(self, record: str, claimant: str | None) -> None:
         """Drop claimant's claim on a record. With None, drop whoever holds it, as a person may."""
         raise self._unsupported("release")
+
+    # Migration operations
+
+    def claim_rule(self, rule: str, claimant: str) -> bool:
+        """Claim a whole rule for claimant, as a migration does before it moves the rule away.
+
+        While the claim holds, every write to the rule's records here raises
+        UnreachableError, so the rule's offline policy applies. Reads still
+        work. True if claimant holds the claim, now or already.
+        """
+        raise self._unsupported("claim_rule")
+
+    def release_rule(self, rule: str, claimant: str | None) -> None:
+        """Drop claimant's claim on a rule. With None, drop whoever holds it, as a person may."""
+        raise self._unsupported("release_rule")
+
+    def records(self, *rules: str) -> list[Record]:
+        """Every record of the rules, in any state, in the order they were first logged.
+
+        Restoring them in this order keeps the order recovery takes them in.
+        """
+        raise self._unsupported("records")
+
+    def restore(self, record: Record, history: Sequence[Step]) -> Record:
+        """Write a record from another authority with its own ID, state, revision, requested key and log.
+
+        Running it again changes nothing. A record already here with that ID is
+        accepted only if its log starts with history, and its fields match when
+        nothing has been logged since. Anything else raises RecordExistsError,
+        and a location taken by another record raises EntityExistsError.
+        """
+        raise self._unsupported("restore")
 
     # Link operations
 

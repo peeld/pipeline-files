@@ -34,7 +34,7 @@ The authority is always touched first, and a failure on an active link either un
 - **Reversibility declared per operation.** A creation can be undone, and only the items this operation created are removed. Overwrites, renames and deletes cannot be undone, so they fall back to out of sync with a retry.
 - **An operation log.** Where the authority supports transactions, the log entry is written in the same transaction as the record, so a crash between steps resumes the work and leaves no orphans.
 - **Content hashes in the authority.** They distinguish a file that already exists from one that exists with different content, which is a conflict.
-- **Passive links stay outside the commit.** They run on their own triggers and never delay or fail a write.
+- **Passive links stay outside the commit.** They run when a tool calls for them, by link or event name, and never delay or fail a write ([decision 0019](decisions/0019-passive-links-run-on-one-call.md)).
 
 **The write flow in practice** ([decision 0013](decisions/0013-records-operation-log-and-write-steps.md))
 
