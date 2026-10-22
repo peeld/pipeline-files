@@ -88,7 +88,7 @@ Later phases add more backends beside these.
 
 These came up while building phases 1 to 6.
 
-- **Windows and macOS are untested.** The test workflow covers them. It first ran when `main` was pushed on 2026-10-21, and its results have not been checked yet. The likely trouble spots are case-insensitive names and path length.
+- **macOS cannot hold every name the default string pattern allows.** APFS cannot reliably create and then find a name with an unassigned code point, so a mkdir fails on macOS for a value that works on Linux and Windows. The property tests leave such characters out. The library does not refuse them, because which code points are unassigned depends on the Unicode version of each machine.
 - **A query cannot ask for an optional key to be absent.** Leaving a key out, or passing None, means "anything". If people need "no variant", it needs its own marker.
 - **`newest` groups by every other key by default.** On a rule with a frame key, `newest("version")` keeps the newest version of each frame, not the newest version as a whole. Use `within=` to choose the grouping. The `--newest` option on the command line has no way to set it yet.
 - **Finding keys that could contain `/` is a heuristic.** The filesystem backend tests a few sample values and looks for `/` in the pattern. A pattern that allows `/` only in unusual positions could slip through.

@@ -23,6 +23,10 @@ def _valid(key: Key):
 
 INT64 = (-(2**63), 2**63 - 1)
 
+# No unassigned code points: macOS cannot reliably create and then find a file
+# name that holds one, although the default string pattern allows them.
+NAME_CHARACTERS = st.characters(exclude_categories=("Cs", "Cn"))
+
 
 def key_values(key: Key, *, int64: bool = False) -> st.SearchStrategy:
     """Every valid value for key, including awkward ones the key's pattern allows.
@@ -33,7 +37,8 @@ def key_values(key: Key, *, int64: bool = False) -> st.SearchStrategy:
         return st.sampled_from(key.choices)
     if key.type == "string":
         # Capped in length so generated paths stay inside Windows' path limit.
-        base = st.from_regex(key.pattern or DEFAULT_STRING_PATTERN, fullmatch=True).filter(lambda t: len(t) <= 24)
+        pattern = key.pattern or DEFAULT_STRING_PATTERN
+        base = st.from_regex(pattern, fullmatch=True, alphabet=NAME_CHARACTERS).filter(lambda t: len(t) <= 24)
     elif key.type == "int":
         if key.pattern is None:
             base = st.integers(min_value=-(10**12), max_value=10**12)
