@@ -109,7 +109,7 @@ def test_known_keys_prune_the_walk(vfx, monkeypatch):
     real_scandir = os.scandir
 
     def recording_scandir(path):
-        listed.append(os.path.relpath(path, vfx._root_path(vfx.layout.rule("shot"))))
+        listed.append(os.path.relpath(path, vfx._root_path(vfx.layout.rule("shot"))).replace(os.sep, "/"))
         return real_scandir(path)
 
     monkeypatch.setattr(filesystem.os, "scandir", recording_scandir)
