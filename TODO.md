@@ -5,16 +5,16 @@
 ## Where things stand
 
 - Phases 1 to 4 of the [build order](docs/12-build-order-and-verification.md) are built, and all four gates pass.
-- The work is on stacked local branches. None has been pushed and no PR exists. The user chose to keep building locally for now.
-  - `phase-1-schema-and-rules`: keys, rules, roots, templates, two-way resolution, CLI, JSON Schema.
-  - `phase-2-filesystem-query`, built on phase 1: backend interface, filesystem backend, queries and filters.
-  - `phase-3-sqlite-backend`, built on phase 2: SQLite backend, `create`, attribute filters, capability flags, the optional validator, `query --db`.
-  - `phase-4-authority-and-links`, built on phase 3: the `links` section, records with states, the operation log (SQLite schema 2), the write engine with rollback and recovery, filesystem `realize` and `undo`, sidecars. It also holds this file.
-- The tests have only run on Python 3.10 on Linux, with SQLite 3.37. `.github/workflows/tests.yml` also covers 3.12 on Linux, Windows and macOS, but has never run.
+- All four phases are on `main` and pushed to `origin`, one commit each. Each phase was built on its own branch, then `main` was fast-forwarded to it. There are no PRs.
+  - Phase 1: keys, rules, roots, templates, two-way resolution, CLI, JSON Schema.
+  - Phase 2: backend interface, filesystem backend, queries and filters.
+  - Phase 3: SQLite backend, `create`, attribute filters, capability flags, the optional validator, `query --db`.
+  - Phase 4: the `links` section, records with states, the operation log (SQLite schema 2), the write engine with rollback and recovery, filesystem `realize` and `undo`, sidecars.
+- Locally, the tests pass on Python 3.10 on Linux, with SQLite 3.37. `.github/workflows/tests.yml` also covers 3.12 on Linux, Windows and macOS. It first ran when `main` was pushed on 2026-10-21, and its results have not been checked yet.
 
 ## Before starting
 
-1. Ask whether to push the branches and open stacked PRs (phase 1 into `main`, then each phase into the one before), or to keep building locally.
+1. Branch `phase-5-holding-and-merge` off `main`. When the gate and all checks pass, fast-forward `main` to it and push `main`.
 2. Set up and check that everything passes:
 
    ```sh
@@ -54,7 +54,7 @@
 
 Details are in doc 13 under "Known gaps and follow-ups".
 
-- [ ] Push and watch the Windows and macOS CI runs, and fix anything case- or path-length related. Check the SQLite version on each runner supports JSON functions (`json_each`) and partial indexes.
+- [ ] Check the Windows and macOS CI runs from the first push to `main`, and fix anything case- or path-length related. Check the SQLite version on each runner supports JSON functions (`json_each`) and partial indexes.
 - [ ] Add `create` and `recover` commands to the command line.
 - [ ] Let the `--newest` option choose its grouping keys (`within=`).
 - [ ] Decide how a filesystem walk handles a permission error.

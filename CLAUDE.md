@@ -21,7 +21,7 @@ A storage-neutral layer that lets tools ask for data by rule and fields instead 
 - Each worked example in doc 10 is a fixture in `tests/fixtures/`. New features are tested against all five.
 - Errors are loud: never guess on an ambiguous name, never quietly skip a bad value. Raise a `LayoutError` subclass that names the rule, key or path at fault.
 - Python 3.10 or later, ruff line length 120.
-- Each phase goes on its own branch, stacked on the one before (`phase-N-...`), with one commit per phase.
+- Each phase is built on its own branch off `main` (`phase-N-...`), as one commit. When its gate and all checks pass, fast-forward `main` to it and push `main`. No PRs.
 - Backend operations are listed in `OPERATIONS` in `src/entitylayout/backends/base.py`, and a backend supports the ones it overrides (decision 0004). Authority and link operations are grouped in `AUTHORITY_OPERATIONS` and `LINK_OPERATIONS`.
 - Write flow rules (decision 0013): log before acting. A link step calls `note(item)` before it makes each item, and undo removes only logged items that are unchanged. Every new step in `src/entitylayout/engine.py` calls `self.checkpoint(name)` first, so the phase 4 gate (`tests/test_write_gate.py`) can fail it.
 - A setting the engine cannot carry out yet is refused when the `Engine` is built, never treated as a default. Remove the refusal in `Engine._check` when the feature lands.
