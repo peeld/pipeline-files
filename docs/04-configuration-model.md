@@ -28,7 +28,7 @@ Defaults are fixed values. A moving target such as "the latest version" is a que
 
 A string key with no pattern or choices refuses anything unsafe in a name on common filesystems: `/`, `\`, the characters Windows forbids, control characters, leading or trailing spaces, a leading or trailing dot, and Windows device names such as `CON` and `AUX`. A leading dot is refused so that hidden files such as `.DS_Store` are never read as entities. Strings are compared in Unicode normal form C, so a name typed on one system matches the same name read back on another.
 
-**What a rule carries.** A rule lists its keys in order, names its parent and root, and gives a template for each backend that needs one. Because a rule inherits its parent's keys, root and template prefix, the shared part of a layout is written once. A rule can mark path segments as optional, and can name attributes that live beside the keys without being part of them.
+**What a rule carries.** A rule lists its keys in order, names its parent and root, and gives a template for each backend that needs one. Because a rule inherits its parent's keys, root and template prefix, the shared part of a layout is written once. A rule can mark path segments as optional, and can name attributes that live beside the keys without being part of them. A rule can also name a `version_key` and a `suffix_key`: the keys a clash rule may change, as described in [Conflict resolution](09-conflict-resolution.md) ([decision 0017](decisions/0017-clash-keys-and-the-requested-key.md)).
 
 **Templates.** A template is text with `{key}` placeholders, and `[ ... ]` around an optional group ([decision 0008](decisions/0008-template-syntax-and-strict-parsing.md)). A key can appear more than once, for example as a folder and again in the file name. A child rule's template continues its parent's after a `/`.
 
@@ -71,7 +71,7 @@ links:
 
 Here the media for shot 40, version 3, camera main, variant hero is at `fs://projects/alpha/shots/ABC/ABC_040/media/v003/main_hero`. On a render node, that location resolves under `/fast/projects`. On a Mac, it resolves under `/Volumes/projects`. Locations are written as URIs of backend, logical root and relative path ([decision 0009](decisions/0009-location-uris.md)).
 
-**Links.** The `links` section names, for each rule, its authority and its active and passive links, with their settings. Here the tracking database is the authority for shots, and the media and frame rules inherit that, because they declare no links of their own. A link name such as `tracking` is bound to a real backend by the tool that writes, so the configuration holds no connection details ([decision 0012](decisions/0012-link-configuration.md)).
+**Links.** The `links` section names, for each rule, its authority and its active and passive links, with their settings. Here the tracking database is the authority for shots, and the media and frame rules inherit that, because they declare no links of their own. A link name such as `tracking` is bound to a real backend by the tool that writes, so the configuration holds no connection details ([decision 0012](decisions/0012-link-configuration.md)). An authority with `offline: hold` can also set `merge` and `max_age`, which say when held work merges ([decision 0015](decisions/0015-merge-trigger-and-age-limit.md)).
 
 **Design guidelines**
 

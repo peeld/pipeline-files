@@ -18,7 +18,7 @@ from .roots import Root
 from .template import Template
 
 SECTIONS = {"version", "keys", "rules", "roots", "links"}
-RULE_PROPERTIES = {"parent", "keys", "root", "templates", "attributes", "description"}
+RULE_PROPERTIES = {"parent", "keys", "root", "templates", "attributes", "description", "version_key", "suffix_key"}
 ATTRIBUTE_TYPES = ("string", "int", "float", "bool", "date", "datetime", "list", "map")
 CONFIG_SUFFIXES = (".yaml", ".yml", ".json")
 
@@ -37,6 +37,10 @@ class Rule:
     A rule with a parent inherits the parent's keys, root and attributes, and
     each of its templates continues the parent's template for that backend.
     A rule without links of its own uses its parent's.
+
+    The version key is the key a ``version_up`` clash raises, and the suffix
+    key the one a ``suffix`` clash sets (decision 0017). Each is one of the
+    rule's own keys, so resolving a clash never changes a parent.
     """
 
     def __init__(
@@ -49,6 +53,8 @@ class Rule:
         attributes: Mapping[str, str],
         parent: str | None = None,
         description: str | None = None,
+        version_key: str | None = None,
+        suffix_key: str | None = None,
     ) -> None:
         self.name = name
         self.keys = keys
@@ -57,6 +63,8 @@ class Rule:
         self.attributes = dict(attributes)
         self.parent = parent
         self.description = description
+        self.version_key = version_key
+        self.suffix_key = suffix_key
         # Set once the links section is read; None when no rule in the chain declares links.
         self.links: Links | None = None
 
@@ -271,6 +279,15 @@ def _read_links(section: Mapping[str, Any], rules: Mapping[str, Rule]) -> None:
         while current is not None and current.name not in declared:
             current = rules[current.parent] if current.parent else None
         rule.links = declared[current.name] if current else None
+        if rule.links is None:
+            continue
+        for link in (rule.links.authority, *rule.links.active):
+            prop = {"version_up": "version_key", "suffix": "suffix_key"}.get(link.clash)
+            if prop is not None and getattr(rule, prop) is None:
+                raise ConfigError(
+                    f"rule {rule.name!r}: link {link.name!r} (declared by {rule.links.declared_by!r}) has clash rule "
+                    f"{link.clash!r}, so the rule needs a {prop}"
+                )
 
 
 def _section(data: Mapping[str, Any], name: str) -> Mapping[str, Any]:
@@ -367,6 +384,9 @@ def _build_rule(
             raise ConfigError(f"rule {name!r}: {attr!r} is a key, so it cannot also be an attribute")
         attributes[attr] = attr_type
 
+    version_key = _clash_key(name, spec, "version_key", own_keys, keys, templates, optional=False)
+    suffix_key = _clash_key(name, spec, "suffix_key", own_keys, keys, templates, optional=True)
+
     rule = Rule(
         name,
         keys=rule_keys,
@@ -375,6 +395,34 @@ def _build_rule(
         attributes=attributes,
         parent=parent_name,
         description=spec.get("description"),
+        version_key=version_key,
+        suffix_key=suffix_key,
     )
     built[name] = rule
     return rule
+
+
+def _clash_key(
+    rule: str,
+    spec: Mapping[str, Any],
+    prop: str,
+    own_keys: list[str],
+    keys: Mapping[str, Key],
+    templates: Mapping[str, Template],
+    *,
+    optional: bool,
+) -> str | None:
+    """The key a clash rule changes: one of the rule's own int keys, in an optional group only for a suffix."""
+    name = spec.get(prop)
+    if name is None:
+        return None
+    context = f"rule {rule!r}: {prop} {name!r}"
+    if name not in own_keys:
+        raise ConfigError(f"{context} must be one of the rule's own keys, {own_keys}, not a parent's")
+    if keys[name].type != "int":
+        raise ConfigError(f"{context} must be an int key, not {keys[name].type}")
+    for backend, template in templates.items():
+        if (name in template.optional_key_names) != optional:
+            where = "in an optional group" if optional else "outside any optional group"
+            raise ConfigError(f"{context} must be {where} in the {backend!r} template")
+    return name

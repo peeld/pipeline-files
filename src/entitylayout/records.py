@@ -7,11 +7,14 @@ import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .entity import Entity
 from .errors import LayoutError
 from .location import Location
+
+if TYPE_CHECKING:
+    from .layout import Layout, Rule
 
 STATES = ("pending", "committed", "out_of_sync", "failed")
 # Pending and failed records are seen only by the writing tool and by recovery.
@@ -49,6 +52,8 @@ class Record:
     content_hash: str | None = None
     # Active links that are behind, in order, while the record is out of sync.
     lagging: tuple[str, ...] = ()
+    # The fields first asked for, when a clash or a parent's merge gave the record others; else None.
+    requested: dict[str, Any] | None = None
 
     def entity(self) -> Entity:
         return Entity(
@@ -88,6 +93,43 @@ def canonical_json(value: Any) -> str:
 
 def content_hash(data: bytes) -> str:
     return "sha256:" + hashlib.sha256(data).hexdigest()
+
+
+def decode_fields(layout: Layout, rule: Rule, data: Any, source: str) -> dict[str, Any]:
+    """Fields read back from JSON, with dates turned back from ISO text and every value checked."""
+    if not isinstance(data, Mapping):
+        raise LayoutError(f"{source}: fields must be a JSON object, got {data!r}")
+    unknown = sorted(set(data) - set(rule.keys))
+    if unknown:
+        raise LayoutError(f"{source}: rule {rule.name!r} has no keys {unknown}")
+    fields = {}
+    for name, value in data.items():
+        try:
+            if layout.keys[name].type == "date" and isinstance(value, str):
+                value = dt.date.fromisoformat(value)
+            fields[name] = layout.keys[name].validate(value)
+        except ValueError as exc:
+            raise LayoutError(f"{source}: key {name!r} holds {value!r}: {exc}") from None
+    return fields
+
+
+def decode_attributes(rule: Rule, stored: str, source: str) -> dict[str, Any]:
+    """Attributes read back from JSON text, with declared dates and datetimes turned back from ISO text."""
+    try:
+        attributes = json.loads(stored)
+    except ValueError as exc:
+        raise LayoutError(f"{source}: attributes are not valid JSON: {exc}") from None
+    if not isinstance(attributes, dict):
+        raise LayoutError(f"{source}: attributes must be a JSON object, got {stored!r}")
+    for name, value in attributes.items():
+        kind = rule.attributes.get(name)
+        if kind not in ("date", "datetime") or not isinstance(value, str):
+            continue
+        try:
+            attributes[name] = (dt.date if kind == "date" else dt.datetime).fromisoformat(value)
+        except ValueError:
+            raise LayoutError(f"{source}: attribute {name!r} is declared {kind} but holds {value!r}") from None
+    return attributes
 
 
 # Sidecars

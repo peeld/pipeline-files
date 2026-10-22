@@ -18,13 +18,13 @@ The biggest risks are an abstraction that fits no backend well, and offline work
 
 - **Operations while offline.** Every operation can be attempted offline, and none is required to be implemented. The framework makes the call and the implementation does the work. An operation that is not implemented fails when attempted, and each implementation publishes what it supports.
 - **Attributes.** Attributes are typed and assumed valid when used. Validation is an optional separate layer that a deployment can add or leave out.
+- **Merge trigger.** Held work merges on its own by default. A rule can require a person to confirm each merge ([decision 0015](decisions/0015-merge-trigger-and-age-limit.md)).
+- **Holding age limit.** An authority can set `max_age`. Held work older than that waits for a person to confirm it, and is never deleted for its age ([decision 0015](decisions/0015-merge-trigger-and-age-limit.md)).
 
 **Left to the implementation**
 
 These depend on the deployment and can be decided when the relevant phase is built.
 
-- **Holding age limit.** How long a holding element may wait before it must be rebased against the current authority, and what happens to elements that exceed it.
-- **Merge trigger.** Whether merge runs automatically when the authority returns or waits for a person to confirm. A per-rule setting is a natural fit.
 - **Language reach.** Whether one core library is enough, or the rules must be read natively from more than one language. The first implementation is in Python, and the configuration has a JSON Schema so other languages can read it directly ([decision 0006](decisions/0006-python-reference-implementation.md)). Whether a second implementation is needed is still open.
 - **Migration tooling.** Whether changing an entity type's authority is a one-off script or a supported feature.
 

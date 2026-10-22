@@ -9,6 +9,8 @@ rules:
     keys: [version, camera, variant]
     templates:
       fs: "media/{version}/{camera}[_{variant}]"
+    # A version_up clash raises the version.
+    version_key: version
     attributes:
       status: string
       artist: string

@@ -12,14 +12,23 @@ from contextlib import contextmanager
 from typing import Any
 
 from ..entity import Entity
-from ..errors import ConfigError, EntityExistsError, InvalidValueError, LayoutError
+from ..errors import ConfigError, EntityExistsError, InvalidValueError, LayoutError, NoRecordError, RecordExistsError
 from ..keys import Key
 from ..layout import Layout, Rule
 from ..location import Location
-from ..records import STATES, VISIBLE_STATES, Record, Step, canonical_json, json_default
+from ..records import (
+    STATES,
+    VISIBLE_STATES,
+    Record,
+    Step,
+    canonical_json,
+    decode_attributes,
+    decode_fields,
+    json_default,
+)
 from .base import AttributeValidator, Backend
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
 # The fixed columns of the entities table. Key columns follow, one per key.
 _ENTITIES_TABLE = (
     "CREATE TABLE entities ("
@@ -31,8 +40,11 @@ _ENTITIES_TABLE = (
     f" state TEXT NOT NULL DEFAULT 'committed' CHECK (state IN ({', '.join(repr(s) for s in STATES)})),"
     " revision INTEGER NOT NULL DEFAULT 1,"
     " content_hash TEXT,"
-    " lagging TEXT NOT NULL DEFAULT '[]')"
+    " lagging TEXT NOT NULL DEFAULT '[]',"
+    " requested TEXT)"
 )
+# One row per claimed record. The primary key makes a claim an atomic create.
+_CLAIMS_TABLE = "CREATE TABLE claims (record TEXT PRIMARY KEY, claimant TEXT NOT NULL, since TEXT NOT NULL)"
 _V1_COLUMNS = ("id", "rule", "location", "config_version", "attributes")
 _VISIBLE = f"state IN ({', '.join(repr(s) for s in VISIBLE_STATES)})"
 # The states a record may move to from each state. A failed record is final, so its location can be reused.
@@ -58,6 +70,8 @@ class SQLiteBackend(Backend):
     Each row is a record with a state. Normal queries see committed and out
     of sync records only. The operation log is written in the same
     transaction as each change to a record, so SQLite can be an authority.
+    Claims are rows of a ``claims`` table, so two processes sharing the
+    database never recover or merge the same record at once.
     """
 
     capabilities = frozenset({"attribute_queries", "atomic_updates"})
@@ -145,7 +159,7 @@ class SQLiteBackend(Backend):
 
     def create(self, rule: str, fields: Mapping[str, Any], attributes: Mapping[str, Any] | None = None) -> Entity:
         """Record a committed entity directly, with no links. The log records it as one step."""
-        return self._insert(rule, fields, attributes, "committed", str(uuid.uuid4()), None).entity()
+        return self._insert(rule, fields, attributes, "committed", str(uuid.uuid4()), None, None, None).entity()
 
     # Authority operations
 
@@ -157,8 +171,10 @@ class SQLiteBackend(Backend):
         *,
         operation: str,
         content_hash: str | None = None,
+        record_id: str | None = None,
+        requested: Mapping[str, Any] | None = None,
     ) -> Record:
-        return self._insert(rule, fields, attributes, "pending", operation, content_hash)
+        return self._insert(rule, fields, attributes, "pending", operation, content_hash, record_id, requested)
 
     def log(
         self,
@@ -190,7 +206,7 @@ class SQLiteBackend(Backend):
     def record(self, record: str) -> Record:
         row = self._conn.execute("SELECT rule FROM entities WHERE id = ?", (record,)).fetchone()
         if row is None:
-            raise LayoutError(f"{self.path!r} has no record {record}")
+            raise NoRecordError(f"{self.path!r} has no record {record}")
         rule = self.layout.rule(row[0])
         found = self._conn.execute(f"SELECT {self._select(rule)} FROM entities WHERE id = ?", (record,)).fetchone()
         return self._record(rule, found)
@@ -209,6 +225,21 @@ class SQLiteBackend(Backend):
         )
         return [self.record(row_id) for (row_id,) in rows.fetchall()]
 
+    def claim(self, record: str, claimant: str) -> bool:
+        since = dt.datetime.now(dt.timezone.utc).isoformat()
+        with self.transaction():
+            self._conn.execute(
+                "INSERT OR IGNORE INTO claims (record, claimant, since) VALUES (?, ?, ?)", (record, claimant, since)
+            )
+            (holder,) = self._conn.execute("SELECT claimant FROM claims WHERE record = ?", (record,)).fetchone()
+        return holder == claimant
+
+    def release(self, record: str, claimant: str | None) -> None:
+        if claimant is None:
+            self._conn.execute("DELETE FROM claims WHERE record = ?", (record,))
+        else:
+            self._conn.execute("DELETE FROM claims WHERE record = ? AND claimant = ?", (record, claimant))
+
     def _insert(
         self,
         rule: str,
@@ -217,6 +248,8 @@ class SQLiteBackend(Backend):
         state: str,
         operation: str,
         content_hash: str | None,
+        record_id: str | None,
+        requested: Mapping[str, Any] | None,
     ) -> Record:
         r = self._rule(rule)
         location = self.layout.locate(rule, fields, self.name)
@@ -225,9 +258,13 @@ class SQLiteBackend(Backend):
         attributes = self._write_attributes(r, attributes)
         stored = _encode_attributes(r, attributes)
         # Decode before writing, so a value that would not read back fails now rather than on every query.
-        attributes = _decode_attributes(r, stored, location)
+        attributes = decode_attributes(r, stored, location.uri)
+        if requested is not None:
+            requested = r.template(self.name).parse(self.layout.locate(rule, requested, self.name).path)
+            # Kept only when it differs, so a record with requested fields is one whose key was changed.
+            requested = None if requested == full else requested
         record = Record(
-            id=str(uuid.uuid4()),
+            id=record_id or str(uuid.uuid4()),
             rule=r.name,
             fields=full,
             location=location,
@@ -236,22 +273,40 @@ class SQLiteBackend(Backend):
             config_version=str(self.layout.version),
             attributes=attributes,
             content_hash=content_hash,
+            requested=requested,
         )
         names = list(full)
-        columns = ["id", "rule", "location", "config_version", "attributes", "state", "revision", "content_hash"]
+        columns = [
+            *("id", "rule", "location", "config_version", "attributes", "state", "revision", "content_hash"),
+            "requested",
+        ]
         params = [record.id, r.name, location.path, record.config_version, stored, state, 1, content_hash]
+        params.append(None if requested is None else canonical_json(requested))
         params.extend(self._to_column(n, full[n]) for n in names)
         sql = (
             f"INSERT INTO entities ({', '.join([*columns, *map(_column, names)])})"
             f" VALUES ({', '.join('?' * len(params))})"
         )
         with self.transaction():
+            if record_id is not None:
+                self._replace_failed(record_id)
             try:
                 self._conn.execute(sql, params)
             except sqlite3.IntegrityError:
                 raise EntityExistsError(f"rule {r.name!r}: an entity already exists at {location.uri}") from None
             self.log(operation, record.id, "reserved" if state == "pending" else state, detail={"kind": "create"})
         return record
+
+    def _replace_failed(self, record_id: str) -> None:
+        """Make way for a record with a given ID: refuse one that has not failed, and remove a failed one."""
+        row = self._conn.execute("SELECT state FROM entities WHERE id = ?", (record_id,)).fetchone()
+        if row is None:
+            return
+        if row[0] != "failed":
+            found = self.record(record_id)
+            raise RecordExistsError(f"record {record_id} already exists, {found.state}, at {found.location.uri}", found)
+        # Its log stays: a merge retried after a rollback reserves under the same holding uuid.
+        self._conn.execute("DELETE FROM entities WHERE id = ?", (record_id,))
 
     # Schema
 
@@ -277,7 +332,7 @@ class SQLiteBackend(Backend):
                 )
                 self._conn.execute(_ENTITIES_TABLE)
                 self._create_indexes()
-            elif meta.get("schema") not in ("1", SCHEMA_VERSION):
+            elif meta.get("schema") not in ("1", "2", SCHEMA_VERSION):
                 raise LayoutError(f"{self.path!r} has schema {meta.get('schema')!r}; expected {SCHEMA_VERSION!r}")
             elif meta.get("template") != self.name:
                 raise LayoutError(
@@ -285,6 +340,8 @@ class SQLiteBackend(Backend):
                 )
             elif meta.get("schema") == "1":
                 self._upgrade_from_1()
+            elif meta.get("schema") == "2":
+                self._upgrade_from_2()
             existing = {row[1].casefold() for row in self._conn.execute("PRAGMA table_info(entities)")}
             for name, key in self._keys.items():
                 if f"key_{name}".casefold() not in existing:
@@ -303,9 +360,10 @@ class SQLiteBackend(Backend):
             " detail TEXT NOT NULL DEFAULT '{}')"
         )
         self._conn.execute("CREATE INDEX operations_record ON operations (record, seq)")
+        self._conn.execute(_CLAIMS_TABLE)
 
     def _upgrade_from_1(self) -> None:
-        """Rebuild the entities table with states, and add the operation log. Version 1 rows are committed."""
+        """Rebuild the entities table with states, and add the operation log and claims. Rows become committed."""
         old = [(row[1], row[2]) for row in self._conn.execute("PRAGMA table_info(entities)")]
         keys = [(name, kind) for name, kind in old if name not in _V1_COLUMNS]
         self._conn.execute("ALTER TABLE entities RENAME TO entities_v1")
@@ -316,6 +374,12 @@ class SQLiteBackend(Backend):
         self._conn.execute(f"INSERT INTO entities ({columns}) SELECT {columns} FROM entities_v1")
         self._conn.execute("DROP TABLE entities_v1")
         self._create_indexes()
+        self._conn.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (SCHEMA_VERSION,))
+
+    def _upgrade_from_2(self) -> None:
+        """Add the requested fields column and the claims table. No record was ever rekeyed before."""
+        self._conn.execute("ALTER TABLE entities ADD COLUMN requested TEXT")
+        self._conn.execute(_CLAIMS_TABLE)
         self._conn.execute("UPDATE meta SET value = ? WHERE name = 'schema'", (SCHEMA_VERSION,))
 
     # Values
@@ -333,11 +397,11 @@ class SQLiteBackend(Backend):
         return value
 
     def _select(self, rule: Rule) -> str:
-        fixed = "id, location, attributes, state, revision, config_version, content_hash, lagging"
+        fixed = "id, location, attributes, state, revision, config_version, content_hash, lagging, requested"
         return ", ".join([fixed, *map(_column, rule.keys)])
 
     def _record(self, rule: Rule, row: tuple) -> Record:
-        row_id, path, stored, state, revision, config_version, content_hash, lagging, *values = row
+        row_id, path, stored, state, revision, config_version, content_hash, lagging, requested, *values = row
         location = Location(self.name, rule.root, path)
         try:
             fields = {k: self._from_column(k, v) for k, v in zip(rule.keys, values, strict=True) if v is not None}
@@ -356,9 +420,10 @@ class SQLiteBackend(Backend):
             state=state,
             revision=revision,
             config_version=config_version,
-            attributes=_decode_attributes(rule, stored, location),
+            attributes=decode_attributes(rule, stored, location.uri),
             content_hash=content_hash,
             lagging=tuple(json.loads(lagging)),
+            requested=None if requested is None else decode_fields(self.layout, rule, json.loads(requested), row_id),
         )
 
 
@@ -374,25 +439,6 @@ def _encode_attributes(rule: Rule, attributes: Mapping[str, Any]) -> str:
         except (TypeError, ValueError) as exc:
             raise InvalidValueError(f"rule {rule.name!r}: attribute {name!r} cannot be stored: {exc}") from None
     return canonical_json(attributes)
-
-
-def _decode_attributes(rule: Rule, stored: str, location: Location) -> dict[str, Any]:
-    """Attributes read back, with declared dates and datetimes turned back from ISO text."""
-    try:
-        attributes = json.loads(stored)
-    except ValueError as exc:
-        raise LayoutError(f"{location.uri}: attributes are not valid JSON: {exc}") from None
-    if not isinstance(attributes, dict):
-        raise LayoutError(f"{location.uri}: attributes must be a JSON object, got {stored!r}")
-    for name, value in attributes.items():
-        kind = rule.attributes.get(name)
-        if kind not in ("date", "datetime") or not isinstance(value, str):
-            continue
-        try:
-            attributes[name] = (dt.date if kind == "date" else dt.datetime).fromisoformat(value)
-        except ValueError:
-            raise LayoutError(f"{location.uri}: attribute {name!r} is declared {kind} but holds {value!r}") from None
-    return attributes
 
 
 def _attribute_filter_value(rule: Rule, name: str, value: Any) -> Any:

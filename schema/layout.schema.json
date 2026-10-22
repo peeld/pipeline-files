@@ -82,6 +82,14 @@
         "attributes": {
           "type": "object",
           "additionalProperties": { "enum": ["string", "int", "float", "bool", "date", "datetime", "list", "map"] }
+        },
+        "version_key": {
+          "$ref": "#/$defs/identifier",
+          "description": "One of the rule's own int keys, outside any optional group. A version_up clash raises it."
+        },
+        "suffix_key": {
+          "$ref": "#/$defs/identifier",
+          "description": "One of the rule's own int keys, in an optional group. A suffix clash sets it, from 2."
         }
       }
     },
@@ -109,6 +117,16 @@
               "enum": ["fail", "read_only", "hold"],
               "default": "fail",
               "description": "What writes do when the authority is unreachable."
+            },
+            "merge": {
+              "enum": ["auto", "confirm"],
+              "default": "auto",
+              "description": "Whether held work merges without a person confirming it. Only with offline: hold."
+            },
+            "max_age": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]*[dhm]$",
+              "description": "Held work older than this, such as 7d, merges only when confirmed. Only with offline: hold."
             },
             "clash": { "$ref": "#/$defs/clash" }
           }

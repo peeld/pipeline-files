@@ -36,11 +36,13 @@ rules:
     keys: [study, sample, session]
     templates:
       fs: "{study}/{sample}/{session}"
+    version_key: session
   acquisition:
     parent: session
     keys: [instrument, date, run]
     templates:
       fs: "instrument_{instrument}/{date}_{run}"
+    version_key: run
     attributes:
       parameters: map
       operator: string

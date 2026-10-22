@@ -14,7 +14,9 @@ from entitylayout import (
     InvalidValueError,
     LayoutError,
     MissingKeyError,
+    NoRecordError,
     OperationNotSupportedError,
+    RecordExistsError,
     SQLiteBackend,
     TypedAttributes,
 )
@@ -319,7 +321,7 @@ def test_a_version_1_database_is_upgraded(tmp_path):
         # Columns for keys the layout no longer uses are kept, never dropped.
         assert {"key_retired", "state", "revision", "content_hash", "lagging", "key_version"} <= columns
     with SQLiteBackend(load_fixture("vfx"), path) as db:
-        assert dict(db._conn.execute("SELECT name, value FROM meta"))["schema"] == "2"
+        assert dict(db._conn.execute("SELECT name, value FROM meta"))["schema"] == "3"
         assert len(db.query("shot")) == 2
 
 
@@ -376,3 +378,84 @@ def test_a_reservation_and_its_log_entry_commit_together(db):
     assert db.history(record.id) == []
     with pytest.raises(LayoutError):
         db.record(record.id)
+
+
+def _version_2_database(path):
+    """A database as phase 4 wrote it: one committed shot with its log, and no requested column or claims."""
+    conn = sqlite3.connect(path)
+    conn.executescript(
+        """
+        CREATE TABLE meta (name TEXT PRIMARY KEY, value TEXT NOT NULL);
+        INSERT INTO meta VALUES ('schema', '2'), ('template', 'fs');
+        CREATE TABLE entities (
+            id TEXT PRIMARY KEY, rule TEXT NOT NULL, location TEXT NOT NULL, config_version TEXT NOT NULL,
+            attributes TEXT NOT NULL DEFAULT '{}',
+            state TEXT NOT NULL DEFAULT 'committed'
+                CHECK (state IN ('pending', 'committed', 'out_of_sync', 'failed')),
+            revision INTEGER NOT NULL DEFAULT 1, content_hash TEXT, lagging TEXT NOT NULL DEFAULT '[]');
+        ALTER TABLE entities ADD COLUMN "key_project" TEXT;
+        ALTER TABLE entities ADD COLUMN "key_sequence" TEXT;
+        ALTER TABLE entities ADD COLUMN "key_shot" INTEGER;
+        CREATE UNIQUE INDEX entities_location ON entities (rule, location) WHERE state != 'failed';
+        CREATE TABLE operations (
+            seq INTEGER PRIMARY KEY AUTOINCREMENT, operation TEXT NOT NULL, record TEXT NOT NULL,
+            step TEXT NOT NULL, link TEXT, detail TEXT NOT NULL DEFAULT '{}');
+        CREATE INDEX operations_record ON operations (record, seq);
+        INSERT INTO entities (id, rule, location, config_version, key_project, key_sequence, key_shot)
+            VALUES ('one', 'shot', 'alpha/shots/ABC/ABC_040', '1', 'alpha', 'ABC', 40);
+        INSERT INTO operations (operation, record, step) VALUES ('op', 'one', 'committed');
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def test_a_version_2_database_is_upgraded(tmp_path):
+    path = tmp_path / "v2.db"
+    _version_2_database(path)
+    with SQLiteBackend(load_fixture("vfx"), path) as db:
+        record = db.record("one")
+        assert (record.state, record.requested) == ("committed", None)
+        assert [s.step for s in db.history("one")] == ["committed"]
+        assert db.claim("one", "me")
+    with SQLiteBackend(load_fixture("vfx"), path) as db:
+        assert dict(db._conn.execute("SELECT name, value FROM meta"))["schema"] == "3"
+        assert not db.claim("one", "someone else")
+
+
+def test_reserve_takes_a_given_id_and_refuses_a_different_one_at_the_key(db):
+    fields = {**SHOT, "version": 8, "camera": "main"}
+    record = db.reserve("media", fields, operation="op", record_id="held-1")
+    assert record.id == "held-1" and db.record("held-1").state == "pending"
+    with pytest.raises(RecordExistsError, match="held-1 already exists, pending") as caught:
+        db.reserve("media", {**fields, "version": 9}, operation="op2", record_id="held-1")
+    assert caught.value.record.id == "held-1"
+    with pytest.raises(EntityExistsError):
+        db.reserve("media", fields, operation="op2", record_id="held-2")
+    # A failed record is replaced under the same ID, at any key, and its log is kept.
+    db.settle("op", "held-1", "failed")
+    again = db.reserve("media", {**fields, "version": 9}, operation="op3", record_id="held-1")
+    assert (again.state, again.fields["version"]) == ("pending", 9)
+    assert [s.step for s in db.history("held-1")] == ["reserved", "failed", "reserved"]
+    with pytest.raises(NoRecordError):
+        db.record("nothing")
+
+
+def test_the_requested_key_is_kept_only_when_it_differs(db):
+    asked = {**SHOT, "version": 1, "camera": "witness"}
+    same = db.reserve("media", asked, operation="op", requested=asked)
+    assert same.requested is None and db.record(same.id).requested is None
+    moved = db.reserve("media", {**asked, "version": 4}, operation="op", requested=asked)
+    assert moved.requested == asked and db.record(moved.id).requested == asked
+    assert db.record(moved.id).fields["version"] == 4
+
+
+def test_claims_are_held_by_one_claimant(db):
+    assert db.claim("x", "a") and db.claim("x", "a")
+    assert not db.claim("x", "b")
+    db.release("x", "b")
+    assert not db.claim("x", "b")
+    db.release("x", "a")
+    assert db.claim("x", "b")
+    db.release("x", None)
+    assert db.claim("x", "c")

@@ -38,11 +38,11 @@ The authority is always touched first, and a failure on an active link either un
 
 **The write flow in practice** ([decision 0013](decisions/0013-records-operation-log-and-write-steps.md))
 
-- The flow is a list of named steps: `reserve`, then `realize:<link>`, one step per item the link makes, and `realized:<link>` for each active link in order, then `settle:committed`. A test can fail any one of them, and the phase 4 gate fails each in turn.
+- The flow is a list of named steps: `reserve`, then `realize:<link>`, one step per item the link makes, and `realized:<link>` for each active link in order, then `settle:committed`. A test can fail any one of them, and the phase 4 gate fails each in turn. When a link's clash rule is not fail, a `probe:<link>` step checks it for a clash before `reserve`. Holding and merge add `hold`, `claim` and `clear`.
 - A filesystem link makes the entity's missing directories, then its sidecar, then its file if the entity is one. Each item is logged before it is made, so an undo after a crash knows everything the step may have made.
 - Undo removes only logged items, only if they are unchanged, and a directory only if it is empty. If something else has appeared there, the undo stops, and the record is kept out of sync instead.
 - When a commit fails and every active link allows rollback, the links are undone and the record is failed. When a link has rollback off, nothing is undone, and the record is left pending for recovery to commit.
-- `recover()` settles every pending and out of sync record from the log. `retry()` catches up one out of sync record, and takes the file's content if the content was never written.
+- `recover()` settles every pending and out of sync record from the log. It claims each record first, so two recoveries never work on one record. `retry()` catches up one out of sync record, and takes the file's content if the content was never written.
 - Sidecars are hidden JSON files, stamped with the revision and a hash ([decision 0014](decisions/0014-json-sidecars.md)).
 
 ```python

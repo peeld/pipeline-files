@@ -15,6 +15,14 @@ Every conflict is settled by one of three outcomes: version up, add a number suf
 
 **Identity survives resolution.** Internal IDs never change, so a suffix or a new version alters the label of an entity without breaking references to it. The originally requested key is stored beside the final one, so it is always possible to see what was asked for.
 
+**In practice** ([decision 0017](decisions/0017-clash-keys-and-the-requested-key.md))
+
+- A rule names the keys a clash rule may change: `version_key` for a version up, and `suffix_key` for a suffix. Each is one of the rule's own integer keys, so a clash never moves a parent. The suffix key sits in an optional group of the template, so a name such as `Acme 2026 Q1 report (2).docx` parses back like any other.
+- The link that finds the clash decides. Active links whose rule is not fail are checked before the authority reserves the key. Then the authority refuses a key it holds.
+- A version up takes one past the highest version among the entity's siblings. A suffix starts at 2. Online creates and merges follow the same rules.
+- The authority stores the requested fields beside the final ones whenever they differ.
+- Hand-edited sidecars are detected, but not yet applied as proposals, because there are no updates yet.
+
 **Prevent clashes where possible.** Resolution after the fact is the expensive case. Cheaper options include giving offline work a provisional machine-tagged suffix from the start, or handing each client a block of version numbers in advance. Both make most merges clash-free.
 
 ---

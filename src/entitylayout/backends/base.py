@@ -11,7 +11,9 @@ they cannot be worked out from which methods it overrides.
 
 A backend that keeps records with states and an operation log implements
 the authority operations and can be an authority. One that can realize a
-record idempotently and undo only what it made can be an active link.
+record idempotently and undo only what it made can be an active link. An
+active link whose clash rule is not ``fail`` also needs ``clash``, so a
+clash is found before anything is written.
 """
 
 from __future__ import annotations
@@ -24,9 +26,9 @@ from ..errors import LayoutError, OperationNotSupportedError
 from ..layout import Layout, Rule
 from ..records import Record, Step
 
-AUTHORITY_OPERATIONS = ("reserve", "log", "settle", "record", "history", "unsettled")
+AUTHORITY_OPERATIONS = ("reserve", "log", "settle", "record", "history", "unsettled", "claim", "release")
 LINK_OPERATIONS = ("realize", "undo")
-OPERATIONS = ("query", "exists", "create", *AUTHORITY_OPERATIONS, *LINK_OPERATIONS)
+OPERATIONS = ("query", "exists", "create", *AUTHORITY_OPERATIONS, *LINK_OPERATIONS, "clash")
 CAPABILITIES = (
     # Queries can filter by attribute equality, including attributes the rule does not declare.
     "attribute_queries",
@@ -111,10 +113,17 @@ class Backend:
         *,
         operation: str,
         content_hash: str | None = None,
+        record_id: str | None = None,
+        requested: Mapping[str, Any] | None = None,
     ) -> Record:
         """Record a new entity as pending, logging the reservation in the same transaction.
 
-        Fails with EntityExistsError if a record that has not failed holds the location.
+        Fails with EntityExistsError if a record that has not failed holds the
+        location. With record_id, the record takes that internal ID: a merge
+        reserves under its holding uuid. That fails with RecordExistsError if
+        a record that has not failed has the ID, and replaces a failed one,
+        whose log is kept. With requested, the fields first asked for are kept
+        beside the record's own.
         """
         raise self._unsupported("reserve")
 
@@ -146,6 +155,14 @@ class Backend:
         """Records that recovery has to finish: pending and out of sync."""
         raise self._unsupported("unsettled")
 
+    def claim(self, record: str, claimant: str) -> bool:
+        """Claim a record for claimant by an atomic create. True if claimant holds it, now or already."""
+        raise self._unsupported("claim")
+
+    def release(self, record: str, claimant: str | None) -> None:
+        """Drop claimant's claim on a record. With None, drop whoever holds it, as a person may."""
+        raise self._unsupported("release")
+
     # Link operations
 
     def realize(self, record: Record, *, content: bytes | None = None, note: Note) -> None:
@@ -155,6 +172,10 @@ class Backend:
         after a crash, knows everything this step may have made.
         """
         raise self._unsupported("realize")
+
+    def clash(self, record: Record) -> str | None:
+        """What would make realize fail with a clash for this record, or None. It changes nothing."""
+        raise self._unsupported("clash")
 
     def undo(self, record: Record, items: Sequence[Mapping[str, Any]]) -> None:
         """Remove the items a realize made for record, newest first, and nothing else.

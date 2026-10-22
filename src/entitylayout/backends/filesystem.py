@@ -141,6 +141,32 @@ class FilesystemBackend(Backend):
         note({"make": "file", "path": location.path})
         _write_new(target, content, record.id, location)
 
+    def clash(self, record: Record) -> str | None:
+        """The clash realize would meet: something not a directory on the path, or a different sidecar or file."""
+        rule = self._rule(record.rule)
+        location = self.layout.locate(record.rule, record.fields, self.name)
+        base = self._root_path(rule)
+        if not base.is_dir():
+            raise LayoutError(f"root {rule.root!r} is not a directory here: {str(base)!r}")
+        is_file = record.content_hash is not None
+        parts = location.path.split("/")
+        for depth in range(1, len(parts) + (0 if is_file else 1)):
+            path = base.joinpath(*parts[:depth])
+            if not os.path.lexists(path):
+                return None
+            if not path.is_dir():
+                uri = self._uri(rule, "/".join(parts[:depth]))
+                return f"{uri}: something that is not a directory is already there"
+        sidecar = base / _sidecar_path(location.path, is_file)
+        expected = sidecar_text(dataclasses.replace(record, location=location))
+        if os.path.lexists(sidecar) and _read_text(sidecar) != expected:
+            return f"{location.uri}: a different sidecar is already there, {sidecar.name!r}"
+        target = base.joinpath(*parts)
+        if is_file and os.path.lexists(target):
+            if not target.is_file() or _file_hash(target) != record.content_hash:
+                return f"{location.uri}: a file with different content is already there"
+        return None
+
     def undo(self, record: Record, items: Sequence[Mapping[str, Any]]) -> None:
         rule = self._rule(record.rule)
         base = self._root_path(rule)

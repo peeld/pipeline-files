@@ -21,7 +21,7 @@ The same model fits five very different fields by changing only the configuratio
 
 - A visual effects artist on a train keeps rendering, and the new versions sit in holding until the connection returns.
 - A data scientist on a cluster with no route to the tracking database writes run outputs to holding and merges them after the job.
-- A designer on a flight saves new part revisions locally, and the merge assigns final revision numbers.
+- A designer on a flight saves new part revisions locally. Revisions are letters, which a version up cannot raise yet, so a revision someone else released first needs an engineer to decide.
 - An office worker offline adds documents to a client folder, and conflicts with a colleague's new file are resolved by suffix.
 - A field scientist logs acquisitions on a laptop at a remote site, and the merge assigns sample session numbers on return.
 

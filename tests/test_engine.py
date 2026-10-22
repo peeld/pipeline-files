@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from entitylayout import (
+    Backend,
     ClashError,
     ConfigError,
     Engine,
@@ -330,10 +331,19 @@ def test_the_engine_refuses_bindings_and_settings_it_cannot_carry_out(tmp_path):
             Engine(layout, {"tracking": db, "files": SQLiteBackend(layout, ":memory:")})
         with pytest.raises(ConfigError, match="more than one of its links"):
             Engine(layout, {"tracking": db, "files": db})
-        with pytest.raises(OperationNotSupportedError, match="clash rule 'version_up'"):
-            Engine(vfx(tmp_path, files={"clash": "version_up"}), {"tracking": db, "files": fs})
-        with pytest.raises(OperationNotSupportedError, match="'hold'"):
+        with pytest.raises(ConfigError, match="needs a version_key"):
+            vfx(tmp_path, files={"clash": "version_up"})
+        with pytest.raises(ConfigError, match="needs a holding area"):
             Engine(vfx(tmp_path, tracking={"offline": "hold"}), {"tracking": db, "files": fs})
+
+        class NoProbe(FilesystemBackend):
+            clash = Backend.clash
+
+        data = read_config(FIXTURES / "vfx")
+        data["links"]["media"] = {"tracking": {"role": "authority"}, "files": {"role": "active", "clash": "version_up"}}
+        data["links"]["frame"] = {"tracking": {"role": "authority"}, "files": {"role": "active"}}
+        with pytest.raises(OperationNotSupportedError, match=r"lacks \['clash'\]"):
+            Engine(load_config_data(data), {"tracking": db, "files": NoProbe(layout)})
         # Passive links run only on triggers, so they need no backend yet.
         engine = Engine(layout, {"tracking": db, "files": fs})
     data = read_config(FIXTURES / "vfx")

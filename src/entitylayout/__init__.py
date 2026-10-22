@@ -18,13 +18,16 @@ from .errors import (
     ClashError,
     ConfigError,
     EntityExistsError,
+    HoldingError,
     InvalidValueError,
     LayoutError,
     MissingKeyError,
     NoMatchError,
+    NoRecordError,
     OperationNotSupportedError,
     OutOfSyncError,
     ReadOnlyError,
+    RecordExistsError,
     RootNotMappedError,
     UndoError,
     UnreachableError,
@@ -32,6 +35,7 @@ from .errors import (
     WriteIncompleteError,
     WriteRolledBackError,
 )
+from .holding import OUTCOMES, Element, Holding, MergeResult
 from .keys import Key
 from .layout import Layout, Match, Rule, load_config, load_config_data, read_config
 from .links import Link, Links
@@ -47,10 +51,17 @@ __all__ = [
     "CAPABILITIES",
     "LINK_OPERATIONS",
     "OPERATIONS",
+    "OUTCOMES",
     "STATES",
     "VISIBLE_STATES",
     "ClashError",
+    "Element",
     "Engine",
+    "Holding",
+    "HoldingError",
+    "MergeResult",
+    "NoRecordError",
+    "RecordExistsError",
     "Link",
     "Links",
     "OutOfSyncError",

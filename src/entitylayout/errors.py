@@ -42,6 +42,22 @@ class EntityExistsError(LayoutError):
     """An entity was created where one already exists."""
 
 
+class NoRecordError(LayoutError):
+    """An authority has no record with the internal ID asked for."""
+
+
+class RecordExistsError(LayoutError):
+    """A record that has not failed already has the internal ID being reserved. ``record`` is that record."""
+
+    def __init__(self, message: str, record=None) -> None:
+        super().__init__(message)
+        self.record = record
+
+
+class HoldingError(LayoutError):
+    """The holding area, or an element in it, cannot be used as asked."""
+
+
 class UnreachableError(LayoutError):
     """A backend cannot reach the place its data lives, such as a database server that is down."""
 

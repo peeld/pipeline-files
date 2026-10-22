@@ -16,5 +16,8 @@ Settled decisions, one per file. Treat them as constraints when implementing.
 - [0012: Links are named per rule, with a role and settings, and bound to backends at run time](0012-link-configuration.md)
 - [0013: Records carry a state, every step is logged before it acts, and recovery replays the log](0013-records-operation-log-and-write-steps.md)
 - [0014: Sidecars are hidden JSON files, stamped with revision and hash](0014-json-sidecars.md)
+- [0015: Held work merges on its own unless the rule asks for confirmation, and old work always waits for a person](0015-merge-trigger-and-age-limit.md)
+- [0016: Held elements are folders with a manifest, claims are atomic creates, and a merge is a write under the element's uuid](0016-holding-elements-claims-and-merge.md)
+- [0017: A clash rule changes a key the rule names, the link that finds the clash decides, and the requested key is kept](0017-clash-keys-and-the-requested-key.md)
 
 [Index](../README.md)

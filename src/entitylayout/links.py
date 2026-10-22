@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,12 +13,16 @@ from .errors import ConfigError
 ROLES = ("authority", "active", "passive")
 CLASH_RULES = ("fail", "version_up", "suffix")
 OFFLINE_POLICIES = ("fail", "read_only", "hold")
+MERGE_TRIGGERS = ("auto", "confirm")
+# A holding age limit: a whole number of days, hours or minutes, such as 7d.
+DURATION = re.compile(r"([1-9][0-9]*)([dhm])")
+_UNITS = {"d": "days", "h": "hours", "m": "minutes"}
 LINK_NAME = re.compile(r"[A-Za-z0-9_.-]+")
 EVENT_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 # The settings each role accepts, beside its role.
 _ROLE_PROPERTIES = {
-    "authority": {"offline", "clash"},
+    "authority": {"offline", "clash", "merge", "max_age"},
     "active": {"order", "rollback", "clash"},
     "passive": {"triggers", "clash"},
 }
@@ -41,6 +46,10 @@ class Link:
     triggers: tuple[str, ...] = ()
     # What writes do when the authority is unreachable. Set on the authority only.
     offline: str | None = None
+    # Whether held work merges without a person confirming it (decision 0015). Set on the authority only.
+    merge: str | None = None
+    # How long held work may wait before a person must confirm its merge. None means no limit.
+    max_age: dt.timedelta | None = None
 
 
 @dataclass(frozen=True)
@@ -123,6 +132,19 @@ def _link(rule: str, name: Any, settings: Any) -> Link:
     if offline not in OFFLINE_POLICIES:
         raise ConfigError(f"{context}: offline must be one of {', '.join(OFFLINE_POLICIES)}, got {offline!r}")
 
+    merge = settings.get("merge", "auto")
+    if merge not in MERGE_TRIGGERS:
+        raise ConfigError(f"{context}: merge must be one of {', '.join(MERGE_TRIGGERS)}, got {merge!r}")
+    max_age = settings.get("max_age")
+    if max_age is not None:
+        found = DURATION.fullmatch(max_age) if isinstance(max_age, str) else None
+        if found is None:
+            raise ConfigError(f"{context}: max_age must be a whole number of days, hours or minutes, such as '7d'")
+        max_age = dt.timedelta(**{_UNITS[found[2]]: int(found[1])})
+    held = sorted({"merge", "max_age"} & set(settings))
+    if held and offline != "hold":
+        raise ConfigError(f"{context}: {held} only apply when offline is hold, not {offline!r}")
+
     return Link(
         name=name,
         role=role,
@@ -131,4 +153,6 @@ def _link(rule: str, name: Any, settings: Any) -> Link:
         clash=clash,
         triggers=tuple(triggers),
         offline=offline if role == "authority" else None,
+        merge=merge if role == "authority" else None,
+        max_age=max_age,
     )

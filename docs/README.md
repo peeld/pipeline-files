@@ -1,6 +1,6 @@
 # Entity Layout & Storage Abstraction: Design Plan
 
-**Status:** Draft. Phases 1 to 4 are implemented. **Last updated:** 2026-10-21.
+**Status:** Draft. Phases 1 to 5 are implemented. **Last updated:** 2026-10-21.
 
 This plan defines a small, storage-neutral layer that lets tools ask for things by name and fields instead of by path, and keeps those things consistent across a filesystem, a database and cloud storage.
 
@@ -38,6 +38,9 @@ Settled decisions are recorded one per file in [decisions/](decisions/README.md)
 - [0012: Links are named per rule, with a role and settings, and bound to backends at run time](decisions/0012-link-configuration.md)
 - [0013: Records carry a state, every step is logged before it acts, and recovery replays the log](decisions/0013-records-operation-log-and-write-steps.md)
 - [0014: Sidecars are hidden JSON files, stamped with revision and hash](decisions/0014-json-sidecars.md)
+- [0015: Held work merges on its own unless the rule asks for confirmation, and old work always waits for a person](decisions/0015-merge-trigger-and-age-limit.md)
+- [0016: Held elements are folders with a manifest, claims are atomic creates, and a merge is a write under the element's uuid](decisions/0016-holding-elements-claims-and-merge.md)
+- [0017: A clash rule changes a key the rule names, the link that finds the clash decides, and the requested key is kept](decisions/0017-clash-keys-and-the-requested-key.md)
 
 ## Notes for implementers and agents
 

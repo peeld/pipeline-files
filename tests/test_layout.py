@@ -220,6 +220,65 @@ def test_bad_rules(make_layout, rules, message):
         make_layout(KEYS, rules, roots={"r": "/base", "r2": "/other"})
 
 
+CLASH_KEYS = {
+    "name": {},
+    "version": {"type": "int", "format": "v{value}"},
+    "copy": {"type": "int", "required": False},
+}
+
+
+def clash_rules(**changes):
+    """A doc rule with a version and an optional copy number, changed as given, and a child page rule."""
+    return {
+        "doc": {
+            "root": "r",
+            "keys": ["name", "version", "copy"],
+            "templates": {"fs": "{name}/{version}[-{copy}]"},
+            **changes,
+        },
+        "page": {"parent": "doc", "keys": [], "templates": {"fs": "page"}},
+    }
+
+
+def test_version_and_suffix_keys(make_layout):
+    layout = make_layout(CLASH_KEYS, clash_rules(version_key="version", suffix_key="copy"))
+    doc = layout.rule("doc")
+    assert (doc.version_key, doc.suffix_key) == ("version", "copy")
+    # They are the rule's own, so a child does not inherit them.
+    assert (layout.rule("page").version_key, layout.rule("page").suffix_key) == (None, None)
+    for changes, message in [
+        ({"version_key": "name"}, "must be an int key"),
+        ({"version_key": "copy"}, "outside any optional group"),
+        ({"suffix_key": "version"}, "in an optional group"),
+        ({"version_key": "nope"}, "own keys"),
+    ]:
+        with pytest.raises(ConfigError, match=message):
+            make_layout(CLASH_KEYS, clash_rules(**changes))
+    rules = clash_rules(version_key="version")
+    rules["page"] = {"parent": "doc", "keys": [], "templates": {"fs": "page"}, "version_key": "version"}
+    with pytest.raises(ConfigError, match="not a parent's"):
+        make_layout(CLASH_KEYS, rules)
+
+
+def test_a_clash_rule_needs_its_key_on_every_rule_that_uses_the_link():
+    from entitylayout import load_config_data
+
+    data = {
+        "version": 1,
+        "keys": CLASH_KEYS,
+        "rules": clash_rules(version_key="version"),
+        "roots": {"r": "/base"},
+        "links": {"doc": {"db": {"role": "authority", "clash": "version_up"}, "files": {"role": "active"}}},
+    }
+    with pytest.raises(ConfigError, match="rule 'page': link 'db' \\(declared by 'doc'\\).*needs a version_key"):
+        load_config_data(data)
+    data["links"]["page"] = {"db": {"role": "authority"}, "files": {"role": "active"}}
+    assert load_config_data(data).rule("doc").links.authority.clash == "version_up"
+    data["links"]["doc"]["files"]["clash"] = "suffix"
+    with pytest.raises(ConfigError, match="rule 'doc': link 'files'.*needs a suffix_key"):
+        load_config_data(data)
+
+
 @pytest.mark.parametrize(
     ("data", "message"),
     [

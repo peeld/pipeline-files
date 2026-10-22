@@ -24,6 +24,7 @@ from entitylayout import (
     where,
 )
 from entitylayout.backends import filesystem
+from entitylayout.records import Record, content_hash
 
 from conftest import load_fixture
 
@@ -180,7 +181,7 @@ def test_missing_root(tmp_path):
 
 
 def test_operations_are_published():
-    assert FilesystemBackend.supported_operations() == {"query", "exists", *LINK_OPERATIONS}
+    assert FilesystemBackend.supported_operations() == {"query", "exists", "clash", *LINK_OPERATIONS}
     assert not FilesystemBackend.supports("create")
     assert FilesystemBackend.supports("query")
     assert Backend.supported_operations() == frozenset()
@@ -221,3 +222,26 @@ def test_decomposed_names_on_disk_read_as_nfc(tmp_path):
     [entity] = backend.query("deliverable", {"year": 2026})
     assert entity["client"] == "Café Ltd"
     assert entity.location == backend.layout.locate("deliverable", entity.fields)
+
+
+def test_clash_finds_what_realize_would_refuse_and_changes_nothing(tmp_path):
+    layout = load_fixture("vfx").with_roots({"projects": tmp_path})
+    fs = FilesystemBackend(layout)
+    fields = {"project": "alpha", "sequence": "ABC", "shot": 40, "version": 1, "camera": "main"}
+    location = layout.locate("media", fields)
+    record = Record("id-1", "media", fields, location, "pending", 1, "1")
+    assert fs.clash(record) is None and list(tmp_path.iterdir()) == []
+    fs.realize(record, note=lambda item: None)
+    assert fs.clash(record) is None
+    other = Record("id-2", "media", fields, location, "pending", 1, "1")
+    assert "different sidecar" in fs.clash(other)
+    frame = {**fields, "frame": 1001, "ext": "exr"}
+    path = layout.real_path(layout.locate("frame", frame))
+    path.write_bytes(b"theirs")
+    digest = content_hash(b"ours")
+    mine = Record("id-3", "frame", frame, layout.locate("frame", frame), "pending", 1, "1", content_hash=digest)
+    assert "different content" in fs.clash(mine)
+    blocked = {**fields, "camera": "witness"}
+    layout.real_path(layout.locate("media", blocked)).write_text("a file, not a directory")
+    record = Record("id-4", "media", blocked, layout.locate("media", blocked), "pending", 1, "1")
+    assert "not a directory" in fs.clash(record)

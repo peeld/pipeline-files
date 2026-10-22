@@ -27,8 +27,10 @@ Each entity type names exactly one authority, and every other place the entity e
 
 - The `links` section gives each rule a set of named links, each with a role and the settings for that role. A child rule without links uses its parent's.
 - A tool binds each link name to a backend when it builds the write engine. An authority must keep records and an operation log, which SQLite does. An active link must be able to realize a record and undo it, which the filesystem does.
-- The engine refuses, when it is built, any setting it cannot carry out yet: the clash rules `version_up` and `suffix`, and the offline policy `hold`. Both arrive with holding and merge in phase 5.
+- The engine refuses, when it is built, any binding it cannot carry out: an active link with a clash rule other than fail must be able to check for a clash, and the offline policy `hold` needs a holding area.
+- A clash rule other than fail needs a key to change, which the rule names. A rule that inherits such a link without that key is refused when the configuration loads ([decision 0017](decisions/0017-clash-keys-and-the-requested-key.md)).
 - With the offline policy `read_only`, a write while the authority is unreachable fails with a read-only error, and queries are answered by the first active link that can query.
+- With the offline policy `hold`, a write while the authority is unreachable goes to holding. Queries fall back to an active link in the same way, with the owner's held work overlaid ([Offline operation and holding space](08-offline-operation-and-holding-space.md)).
 
 **Caution on filesystem authority.** When the authority is a filesystem, people and other programs change it outside the system. Links then follow by scanning or watching, not instantly, and they are only eventually consistent. This is a supported choice, but it should be a deliberate one. A database or service authority, where every write passes through the system, gives the guarantees described in this plan.
 

@@ -19,6 +19,11 @@ keys:
   ext:
     type: string
     choices: [docx, pdf, xlsx]
+  # Set only by a suffix clash: "Acme 2026 Q1 report (2).docx".
+  copy:
+    type: int
+    pattern: "[0-9]+"
+    required: false
 
 roots:
   clients:
@@ -30,9 +35,10 @@ roots:
 rules:
   deliverable:
     root: clients
-    keys: [client, year, quarter, doctype, ext]
+    keys: [client, year, quarter, doctype, copy, ext]
     templates:
-      fs: "{client}/{year}/{quarter}/{client} {year} {quarter} {doctype}.{ext}"
+      fs: "{client}/{year}/{quarter}/{client} {year} {quarter} {doctype}[ ({copy})].{ext}"
+    suffix_key: copy
     attributes:
       author: string
       review_status: string

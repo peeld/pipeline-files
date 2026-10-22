@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 import pytest
 
 from entitylayout import ConfigError, load_config_data
@@ -27,6 +29,23 @@ def test_every_fixture_gives_every_rule_an_authority_and_an_active_link(name):
         assert rule.links is not None
         assert rule.links.authority.role == "authority"
         assert len(rule.links.active) == 1 and rule.links.active[0].role == "active"
+
+
+def test_merge_trigger_and_age_limit_come_with_hold():
+    held = {**BASIC, "db": {"role": "authority", "offline": "hold", "merge": "confirm", "max_age": "36h"}}
+    authority = layout({"parent": held}).rule("parent").links.authority
+    assert (authority.merge, authority.max_age) == ("confirm", dt.timedelta(hours=36))
+    plain = layout({"parent": BASIC}).rule("parent").links.authority
+    assert (plain.merge, plain.max_age) == ("auto", None)
+    with pytest.raises(ConfigError, match=r"\['max_age'\] only apply when offline is hold"):
+        layout({"parent": {**BASIC, "db": {"role": "authority", "max_age": "7d"}}})
+    with pytest.raises(ConfigError, match="merge must be one of"):
+        layout({"parent": {**held, "db": {**held["db"], "merge": "later"}}})
+    for bad in ("7", "7 days", "0d", 7):
+        with pytest.raises(ConfigError, match="max_age must be"):
+            layout({"parent": {**held, "db": {**held["db"], "max_age": bad}}})
+    with pytest.raises(ConfigError, match="cannot be set on an active link"):
+        layout({"parent": {**BASIC, "files": {"role": "active", "merge": "auto"}}})
 
 
 def test_defaults_and_roles():
