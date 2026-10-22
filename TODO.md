@@ -1,6 +1,6 @@
 # TODO: handoff for the next session
 
-**Last updated:** 2026-10-21. **Next up:** check the macOS CI job passes, then choose from "Next" below.
+**Last updated:** 2026-10-21. **Next up:** choose from "Next" below.
 
 ## Where things stand
 
@@ -12,7 +12,7 @@
   - Phase 4: the `links` section, records with states, the operation log (SQLite schema 2), the write engine with rollback and recovery, filesystem `realize` and `undo`, sidecars.
   - Phase 5: holding and merge, the owner's overlay, claims, the clash rules `version_up` and `suffix` with the requested key kept (SQLite schema 3), and decisions 0015 to 0017.
   - Phase 6: `Engine.realize_passive` for passive links, the migration operations `claim_rule`, `release_rule`, `records` and `restore`, a reference migration script, and decisions 0018 and 0019. No schema change.
-- Locally, the tests pass on Python 3.10 on Linux, with SQLite 3.37. `.github/workflows/tests.yml` also covers 3.12 on Linux, Windows and macOS. Linux and Windows pass in CI. macOS has failed since phase 4 (see "Next").
+- Locally, the tests pass on Python 3.10 on Linux, with SQLite 3.37. `.github/workflows/tests.yml` also covers 3.12 on Linux, Windows and macOS. All four CI jobs pass.
 
 ## Before starting
 
@@ -39,7 +39,7 @@
 
 ## Next
 
-- [ ] Get the macOS CI job passing. It has failed since phase 4. The first failure, a key value with an unassigned code point, is fixed in the test strategies. Check the job's log for any later failures. Windows and both Linux jobs pass.
+- [x] Get the macOS CI job passing. It failed from phase 4 until `e7307c4`, because generated key values could hold an unassigned code point. All four jobs now pass.
 - [ ] Updates through the write flow, with a base revision. This needs its own decision. Applying hand-edited sidecars and holding offline edits follow from it.
 - [ ] Add `create`, `recover`, `merge` and `realize-passive` commands to the command line.
 
